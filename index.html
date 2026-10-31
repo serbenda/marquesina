@@ -1,0 +1,316 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Marquesina</title>
+<meta name="description" content="Mapa en tiempo real de los autobuses que llegan a tus paradas de EMT Madrid">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Figtree:wght@400;500;600&display=swap">
+<style>
+/* Layout: mapa arriba a pantalla completa, panel de llegadas tipo "marquesina" abajo (lateral en escritorio) */
+:root{
+  --bg:#f3f5f7; --panel:#ffffff; --fg:#14202b; --muted:#5d6b78; --line:#dde3e9;
+  --accent:#d6402b;       /* rojo marquesina */
+  --stop:#14202b;
+  --ok:#1f8a5b; --warn:#c77a0a; --now:#d6402b;
+  --display:"Barlow Condensed","Arial Narrow",Arial,sans-serif;
+  --body:"Figtree",system-ui,-apple-system,"Segoe UI",sans-serif;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0e1419; --panel:#151d24; --fg:#e8eef3; --muted:#93a2af; --line:#26323c;
+  --accent:#ff6a52; --stop:#e8eef3; --ok:#3fbf86; --warn:#e8a33a; --now:#ff6a52; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0e1419; --panel:#151d24; --fg:#e8eef3; --muted:#93a2af; --line:#26323c;
+  --accent:#ff6a52; --stop:#e8eef3; --ok:#3fbf86; --warn:#e8a33a; --now:#ff6a52; color-scheme:dark}
+
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--fg);font:15px/1.45 var(--body);display:flex;flex-direction:column}
+#map{flex:1 1 55%;min-height:260px}
+.leaflet-container{background:var(--bg);font:inherit}
+
+.panel{flex:1 1 45%;min-height:0;background:var(--panel);border-top:1px solid var(--line);display:flex;flex-direction:column}
+.bar{display:flex;align-items:center;gap:10px;padding:10px max(16px,env(safe-area-inset-right,0px)) 10px max(16px,env(safe-area-inset-left,0px));border-bottom:1px solid var(--line)}
+.bar h1{font:700 22px/1 var(--display);letter-spacing:.02em;margin:0;text-transform:uppercase}
+.bar .mode{font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;padding:3px 7px;border-radius:4px;background:var(--line);color:var(--muted)}
+.bar .mode.live{background:var(--ok);color:#fff}
+.spacer{flex:1}
+.ring{width:30px;height:30px;position:relative}
+.ring svg{transform:rotate(-90deg)}
+.ring span{position:absolute;inset:0;display:grid;place-items:center;font:600 10px var(--body);color:var(--muted);font-variant-numeric:tabular-nums}
+button{font:600 13px var(--body);color:var(--fg);background:transparent;border:1px solid var(--line);border-radius:6px;padding:7px 10px;cursor:pointer}
+button:hover{border-color:var(--muted)}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+.list{overflow-y:auto;padding:4px max(16px,env(safe-area-inset-right,0px)) calc(12px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px))}
+.stopname{font:700 15px var(--display);letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:14px 0 4px}
+.row{display:grid;grid-template-columns:52px 1fr auto;gap:12px;align-items:center;padding:10px 0;border-bottom:1px solid var(--line);cursor:pointer}
+.row:last-child{border-bottom:0}
+.badge{font:700 22px/1 var(--display);color:#fff;border-radius:6px;padding:7px 0;text-align:center}
+.dest{min-width:0}
+.dest b{display:block;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dest small{color:var(--muted);font-variant-numeric:tabular-nums}
+.eta{text-align:right}
+.eta strong{display:block;font:700 26px/1 var(--display);font-variant-numeric:tabular-nums}
+.chip{display:inline-block;margin-top:3px;font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase}
+.chip.now{color:var(--now)} .chip.near{color:var(--warn)} .chip.far{color:var(--ok)}
+.empty,.err{color:var(--muted);padding:18px 0}
+.err{color:var(--now)}
+
+.bus-icon{display:grid;place-items:center;font:700 14px/1 var(--display);color:#fff;border:2px solid #fff;border-radius:7px;box-shadow:0 1px 4px rgba(0,0,0,.35);transition:transform .3s}
+.stop-icon{width:18px;height:18px;border-radius:50%;background:var(--stop);border:4px solid var(--panel);box-shadow:0 0 0 2px var(--stop)}
+
+dialog{border:1px solid var(--line);border-radius:10px;background:var(--panel);color:var(--fg);padding:0;width:min(440px,calc(100% - 32px))}
+dialog::backdrop{background:rgba(10,15,20,.5)}
+.dlg{padding:20px;display:flex;flex-direction:column;gap:12px}
+.dlg h2{font:700 22px var(--display);text-transform:uppercase;margin:0}
+.dlg p{margin:0;color:var(--muted);font-size:13px}
+label{display:flex;flex-direction:column;gap:4px;font-size:12px;font-weight:600;color:var(--muted)}
+input,select{font:15px var(--body);color:var(--fg);background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:9px 10px}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.actions{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap}
+
+@media (min-width:900px){
+  body{flex-direction:row}
+  #map{flex:1 1 auto}
+  .panel{flex:0 0 380px;border-top:0;border-left:1px solid var(--line);order:2}
+}
+@media (prefers-reduced-motion:reduce){.bus-icon{transition:none}}
+</style>
+</head>
+<body>
+<div id="map"></div>
+<section class="panel">
+  <div class="bar">
+    <h1>Marquesina</h1>
+    <span class="mode" id="mode">Demo</span>
+    <span class="spacer"></span>
+    <div class="ring" title="Próxima actualización">
+      <svg width="30" height="30" viewBox="0 0 30 30"><circle cx="15" cy="15" r="12" fill="none" stroke="var(--line)" stroke-width="3"/><circle id="ringFg" cx="15" cy="15" r="12" fill="none" stroke="var(--accent)" stroke-width="3" stroke-dasharray="75.4" stroke-dashoffset="0"/></svg>
+      <span id="ringTxt">60</span>
+    </div>
+    <button id="btnRefresh" aria-label="Actualizar ahora">↻</button>
+    <button id="btnCfg">Ajustes</button>
+  </div>
+  <div class="list" id="list"><p class="empty">Cargando…</p></div>
+</section>
+
+<dialog id="cfg">
+  <form class="dlg" id="cfgForm" method="dialog">
+    <h2>Ajustes</h2>
+    <p>Sin credenciales funciona en modo demo con autobuses simulados. Para datos reales, regístrate gratis en Mobility Labs (EMT Madrid).</p>
+    <label>Paradas EMT (números separados por comas)
+      <input id="fStops" inputmode="numeric" placeholder="72, 3054"></label>
+    <div class="two">
+      <label>Email Mobility Labs<input id="fEmail" type="email" autocomplete="username"></label>
+      <label>Contraseña<input id="fPass" type="password" autocomplete="current-password"></label>
+    </div>
+    <label>URL de la API (o de tu proxy en Cloudflare)
+      <input id="fBase" placeholder="https://openapi.emtmadrid.es"></label>
+    <label>Actualizar cada
+      <select id="fEvery"><option value="60">1 minuto</option><option value="120">2 minutos</option><option value="30">30 segundos</option></select></label>
+    <div class="actions">
+      <button type="button" id="btnDemo">Usar demo</button>
+      <button type="submit" class="primary">Guardar</button>
+    </div>
+  </form>
+</dialog>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+// ---------- Configuración ----------
+const DEF = {stops:"72", email:"", pass:"", base:"https://openapi.emtmadrid.es", every:60};
+const store = {
+  get(){ try{ return {...DEF, ...JSON.parse(localStorage.getItem("marquesina")||"{}")}; }catch{ return {...DEF}; } },
+  set(v){ try{ localStorage.setItem("marquesina", JSON.stringify(v)); }catch{} }
+};
+let cfg = store.get();
+const isLive = () => !!(cfg.email && cfg.pass);
+
+// Colores por línea: estables según el número
+const PALETTE = ["#2b6cb0","#c0392b","#1f8a5b","#8e44ad","#d35400","#16808a","#b7950b","#5d6d7e"];
+const colorFor = l => PALETTE[[...String(l)].reduce((a,c)=>a+c.charCodeAt(0),0) % PALETTE.length];
+
+// ---------- Mapa ----------
+const map = L.map("map",{zoomControl:true}).setView([40.4168,-3.7038],15);
+L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,attribution:"© OpenStreetMap"}).addTo(map);
+const layerStops = L.layerGroup().addTo(map);
+const busMarkers = new Map();   // clave bus -> {marker, trail, seen}
+let fitted = false;
+
+function busIcon(line){
+  return L.divIcon({className:"", iconSize:[38,26], iconAnchor:[19,13],
+    html:`<div class="bus-icon" style="width:38px;height:26px;background:${colorFor(line)}">${line}</div>`});
+}
+const stopIcon = L.divIcon({className:"", iconSize:[18,18], iconAnchor:[9,9], html:'<div class="stop-icon"></div>'});
+
+// ---------- API EMT ----------
+let token = null, tokenExp = 0;
+async function login(){
+  if (token && Date.now() < tokenExp) return token;
+  const r = await fetch(`${cfg.base}/v2/mobilitylabs/user/login/`,{headers:{email:cfg.email,password:cfg.pass}});
+  const j = await r.json();
+  const d = j.data && j.data[0];
+  if (!d || !d.accessToken) throw new Error("No se pudo iniciar sesión en Mobility Labs. Revisa email y contraseña.");
+  token = d.accessToken;
+  tokenExp = Date.now() + ((d.tokenSecExpiration||3600) - 60) * 1000;
+  return token;
+}
+async function arrivals(stop){
+  const t = await login();
+  const today = new Date().toISOString().slice(0,10).replace(/-/g,"");
+  const r = await fetch(`${cfg.base}/v2/transport/busemtmad/stops/${stop}/arrives/`,{
+    method:"POST", headers:{accessToken:t,"Content-Type":"application/json"},
+    body:JSON.stringify({cultureInfo:"ES",Text_StopRequired_YN:"Y",Text_EstimationsRequired_YN:"Y",
+      Text_IncidencesRequired_YN:"N",DateTime_Referenced_Incidencies_YYYYMMDD:today})});
+  const j = await r.json();
+  const d = j.data && j.data[0];
+  if (!d) throw new Error(`La parada ${stop} no devolvió datos (${j.description||"sin respuesta"}).`);
+  const si = (d.StopInfo||[])[0] || {};
+  const sc = si.geometry && si.geometry.coordinates;
+  return {
+    id: stop,
+    name: si.stopName || si.Description || `Parada ${stop}`,
+    pos: sc ? [sc[1], sc[0]] : null,
+    buses: (d.Arrive||[]).map(a=>({
+      key:`${a.line}-${a.bus}`, line:a.line, dest:a.destination,
+      eta:a.estimateArrive, dist:a.DistanceBus,
+      pos: a.geometry && a.geometry.coordinates ? [a.geometry.coordinates[1], a.geometry.coordinates[0]] : null
+    }))
+  };
+}
+
+// ---------- Demo: buses simulados que se acercan a la parada ----------
+const DEMO_STOP = {id:"72", name:"Demo · Cibeles", pos:[40.4193,-3.6932]};
+const demoBuses = [
+  {key:"27-1", line:"27", dest:"Plaza Castilla", from:[40.4085,-3.6925], eta:420},
+  {key:"14-2", line:"14", dest:"Pío XII",        from:[40.4120,-3.7030], eta:260},
+  {key:"146-3",line:"146",dest:"Callao",         from:[40.4265,-3.6880], eta:540},
+  {key:"5-4",  line:"5",  dest:"Chamartín",      from:[40.4180,-3.7060], eta:120},
+  {key:"150-5",line:"150",dest:"Virgen del Cortijo",from:[40.4300,-3.6950], eta:780},
+];
+const demoStart = Date.now();
+function demoArrivals(){
+  const t = (Date.now()-demoStart)/1000;
+  const buses = demoBuses.map(b=>{
+    let eta = b.eta - t; if (eta < 0) eta = ((eta % 900) + 900) % 900; // vuelve a empezar
+    const f = Math.min(1, eta / b.eta);
+    const pos = [DEMO_STOP.pos[0] + (b.from[0]-DEMO_STOP.pos[0])*f, DEMO_STOP.pos[1] + (b.from[1]-DEMO_STOP.pos[1])*f];
+    const dist = Math.round(map.distance(pos, DEMO_STOP.pos));
+    return {key:b.key, line:b.line, dest:b.dest, eta:Math.round(eta), dist, pos};
+  });
+  return [{...DEMO_STOP, buses}];
+}
+
+// ---------- Render ----------
+let last = [];       // datos de la última consulta
+let fetchedAt = 0;
+
+function fmtEta(s){
+  if (s >= 999999) return {txt:"+20", unit:"min"};
+  if (s < 60) return {txt:"<1", unit:"min"};
+  return {txt:String(Math.floor(s/60)), unit:"min"};
+}
+function status(s){ return s < 90 ? ["now","Llegando"] : s < 300 ? ["near","Cerca"] : ["far","En camino"]; }
+function fmtDist(m){ return m == null ? "" : m >= 1000 ? (m/1000).toFixed(1).replace(".",",")+" km" : m+" m"; }
+
+function renderList(){
+  const el = document.getElementById("list");
+  if (!last.length){ el.innerHTML = '<p class="empty">Añade una parada en Ajustes.</p>'; return; }
+  const elapsed = (Date.now()-fetchedAt)/1000;
+  el.innerHTML = last.map(s=>{
+    if (s.error) return `<p class="err">${s.error}</p>`;
+    const rows = s.buses.slice().sort((a,b)=>a.eta-b.eta).map(b=>{
+      const eta = Math.max(0, b.eta - elapsed);
+      const e = fmtEta(eta), [cls,lbl] = status(eta);
+      return `<div class="row" data-key="${b.key}">
+        <div class="badge" style="background:${colorFor(b.line)}">${b.line}</div>
+        <div class="dest"><b>${b.dest}</b><small>${fmtDist(b.dist)}${b.pos?"":" · sin posición"}</small></div>
+        <div class="eta"><strong>${e.txt}<small style="font-size:13px"> ${e.unit}</small></strong><span class="chip ${cls}">${lbl}</span></div>
+      </div>`;
+    }).join("") || '<p class="empty">No hay autobuses previstos ahora mismo.</p>';
+    return `<div class="stopname">${s.name} · ${s.id}</div>${rows}`;
+  }).join("");
+}
+
+function renderMap(){
+  layerStops.clearLayers();
+  const seen = new Set(), bounds = [];
+  for (const s of last){
+    if (s.error) continue;
+    if (s.pos){ L.marker(s.pos,{icon:stopIcon}).bindTooltip(s.name).addTo(layerStops); bounds.push(s.pos); }
+    for (const b of s.buses){
+      if (!b.pos) continue;
+      seen.add(b.key); bounds.push(b.pos);
+      let m = busMarkers.get(b.key);
+      if (!m){
+        const marker = L.marker(b.pos,{icon:busIcon(b.line)}).addTo(map);
+        const trail = L.polyline([b.pos],{color:colorFor(b.line),weight:3,opacity:.55,dashArray:"4 6"}).addTo(map);
+        m = {marker, trail}; busMarkers.set(b.key, m);
+      } else {
+        m.marker.setLatLng(b.pos);
+        m.trail.addLatLng(b.pos);
+      }
+      m.marker.bindPopup(`<b>Línea ${b.line}</b> → ${b.dest}<br>${fmtDist(b.dist)} · ${fmtEta(b.eta).txt} min`);
+    }
+  }
+  for (const [k,m] of busMarkers) if (!seen.has(k)){ map.removeLayer(m.marker); map.removeLayer(m.trail); busMarkers.delete(k); }
+  if (!fitted && bounds.length){ map.fitBounds(bounds,{padding:[40,40],maxZoom:16}); fitted = true; }
+}
+
+document.getElementById("list").addEventListener("click", e=>{
+  const row = e.target.closest(".row"); if (!row) return;
+  const m = busMarkers.get(row.dataset.key);
+  if (m){ map.setView(m.marker.getLatLng(), 16); m.marker.openPopup(); }
+});
+
+// ---------- Ciclo de actualización ----------
+let nextAt = 0;
+async function refresh(){
+  const stops = cfg.stops.split(/[,\s]+/).filter(Boolean);
+  document.getElementById("mode").textContent = isLive() ? "En vivo" : "Demo";
+  document.getElementById("mode").classList.toggle("live", isLive());
+  if (!isLive()){ last = demoArrivals(); }
+  else {
+    last = await Promise.all(stops.map(s=>arrivals(s).catch(err=>({id:s, error:
+      err instanceof TypeError ? `No se pudo conectar con la API desde el navegador (parada ${s}). Si es un bloqueo CORS, usa el proxy de Cloudflare y pon su URL en Ajustes.` : err.message}))));
+  }
+  fetchedAt = Date.now();
+  nextAt = fetchedAt + cfg.every*1000;
+  renderMap(); renderList();
+}
+function tick(){
+  const left = Math.max(0, (nextAt-Date.now())/1000);
+  document.getElementById("ringTxt").textContent = Math.ceil(left);
+  document.getElementById("ringFg").setAttribute("stroke-dashoffset", 75.4*(1-left/cfg.every));
+  if (left <= 0) refresh();
+  if (fetchedAt) renderList(); // cuenta atrás de minutos entre consultas
+  // en demo, mover los buses suavemente cada segundo
+  if (!isLive() && fetchedAt){ last = demoArrivals(); fetchedAt = Date.now(); renderMap(); }
+}
+setInterval(tick, 1000);
+document.getElementById("btnRefresh").onclick = refresh;
+
+// ---------- Ajustes ----------
+const dlg = document.getElementById("cfg");
+document.getElementById("btnCfg").onclick = ()=>{
+  fStops.value = cfg.stops; fEmail.value = cfg.email; fPass.value = cfg.pass;
+  fBase.value = cfg.base; fEvery.value = String(cfg.every); dlg.showModal();
+};
+document.getElementById("cfgForm").addEventListener("submit", ()=>{
+  cfg = {stops:fStops.value.trim()||DEF.stops, email:fEmail.value.trim(), pass:fPass.value,
+         base:(fBase.value.trim()||DEF.base).replace(/\/$/,""), every:+fEvery.value};
+  store.set(cfg); token = null; fitted = false; refresh();
+});
+document.getElementById("btnDemo").onclick = ()=>{
+  cfg = {...cfg, email:"", pass:""}; store.set(cfg); fitted = false; dlg.close(); refresh();
+};
+
+refresh();
+</script>
+</body>
+</html>
