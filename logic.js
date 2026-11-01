@@ -40,6 +40,33 @@ export function parseNearest(j) {
     }));
 }
 
+// Paradas cercanas según EMT (/v2/transport/busemtmad/stops/arroundxy). El Consorcio no tiene todas las
+// paradas de EMT (por ejemplo, las de El Pardo), así que la búsqueda combina las dos fuentes.
+export function parseEmtNear(j) {
+  return asArray(j && j.data)
+    .filter(s => s && s.stopId != null && s.geometry && s.geometry.coordinates)
+    .map(s => ({
+      net: "emt",
+      code: String(s.stopId),
+      kind: "EMT",
+      name: s.stopName || `Parada ${s.stopId}`,
+      pos: [s.geometry.coordinates[1], s.geometry.coordinates[0]],
+      lines: [...new Set(asArray(s.lines).map(l => String(l.label || l.line)))],
+    }));
+}
+
+// Junta las paradas de varias fuentes sin repetir (misma red y código); gana la primera que tenga líneas
+export function mergeStops(...lists) {
+  const out = new Map();
+  for (const s of lists.flat()) {
+    const k = `${s.net}:${s.code}`;
+    const prev = out.get(k);
+    if (!prev) out.set(k, s);
+    else if (!prev.lines.length && s.lines.length) out.set(k, { ...prev, lines: s.lines });
+  }
+  return [...out.values()];
+}
+
 // ---------- Formato ----------
 export function fmtEta(s) {
   if (s >= 999999) return { txt: "+20", unit: "min" };

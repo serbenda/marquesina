@@ -22,7 +22,7 @@ Funciona en **Madrid y toda la Comunidad**: autobuses de **EMT Madrid**, interur
 - **Encontrar paradas sin saber el código:**
   - **Cerca de mí**: usa tu ubicación. La primera vez carga las 3 paradas más cercanas; después te enseña las de alrededor para añadirlas.
   - **Zona**: eliges un municipio (Alcobendas, Colmenar Viejo, Tres Cantos, Getafe…) y el mapa va allí.
-  - **Buscar paradas**: muestra todas las paradas de la zona que ves en el mapa (autobús, Metro y Cercanías) mientras lo mueves. Tocas una y la añades.
+  - **Buscar paradas**: muestra todas las paradas de la zona que ves en el mapa (autobús, Metro y Cercanías) mientras lo mueves. Tocas una y la añades. Combina las paradas del Consorcio y las de EMT, así salen también las que el Consorcio no tiene, como las de El Pardo.
 - **No perder la información si falla la conexión.** Se mantienen los últimos datos, hasta 15 minutos, y se indica su antigüedad (*"Sin conexión · datos hace 3 min"*).
 - **Guardar tus paradas.** Se quedan en tu navegador y la próxima vez la web se abre con ellas.
 - **Instalarla como una app.** Icono en la pantalla de inicio, pantalla completa y arranque instantáneo.

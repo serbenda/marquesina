@@ -167,3 +167,22 @@ test("/crtm/stop junta parada, tiempos y posición de los buses en una sola resp
   const bad = await worker.default.fetch(new Request("https://w/crtm/stop/abc"), {}, {});
   assert.equal(bad.status, 404);
 });
+
+test("/emt/near consulta las paradas cercanas en la API de EMT (El Pardo)", async (t) => {
+  const calls = [];
+  t.mock.method(globalThis, "fetch", async (url, init) => {
+    url = String(url); calls.push(url);
+    if (url.includes("/user/login/")) return Response.json({ code: "01", data: [{ accessToken: "tok", tokenSecExpiration: 3600 }] });
+    if (url.includes("/stops/arroundxy/")) {
+      assert.equal(init.headers.accessToken, "tok");
+      return Response.json({ code: "00", data: [{ stopId: 4876, stopName: "El Pardo", geometry: { coordinates: [-3.7745, 40.518] }, lines: [{ label: "601" }] }] });
+    }
+    throw new Error("URL inesperada " + url);
+  });
+  const res = await worker.default.fetch(new Request("https://w/emt/near/40.51800/-3.77450/600"), { EMT_EMAIL: "a", EMT_PASSWORD: "b" }, {});
+  assert.equal(res.status, 200);
+  const j = await res.json();
+  assert.equal(j.data[0].stopId, 4876);
+  assert.ok(calls.some(u => u.endsWith("/stops/arroundxy/-3.775/40.518/600/")), "longitud, latitud y radio en el orden de EMT");
+  assert.equal((await worker.default.fetch(new Request("https://w/emt/near/x/y/600"), {}, {})).status, 404);
+});
