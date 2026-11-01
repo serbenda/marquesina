@@ -2,11 +2,14 @@
 // - La página (index.html) va "primero red": siempre la última versión si hay conexión, la guardada si no.
 // - Librerías, fuentes e iconos van "primero caché": no cambian.
 // - Los datos de autobuses (worker de Cloudflare) y las teselas del mapa NO se guardan: tienen que ser en vivo.
+// - Recibe los avisos programados (Web Push) y los muestra como notificación.
 
-const VERSION = "marquesina-v1";   // cambiarlo obliga a renovar la caché en todos los dispositivos
+const VERSION = "marquesina-v2";   // cambiarlo obliga a renovar la caché en todos los dispositivos
 const SHELL = [
   "./",
   "./manifest.webmanifest",
+  "./logic.js",
+  "./push.js",
   "./assets/icono-192.png",
   "./assets/icono-512.png",
   "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css",
@@ -52,4 +55,29 @@ self.addEventListener("fetch", e => {
       }))
     );
   }
+});
+
+// ---------- Avisos programados ----------
+self.addEventListener("push", e => {
+  let msg = {};
+  try { msg = e.data ? e.data.json() : {}; } catch { msg = { body: e.data && e.data.text() }; }
+  e.waitUntil(self.registration.showNotification(msg.title || "Marquesina", {
+    body: msg.body || "",
+    tag: msg.tag || "marquesina",
+    renotify: true,
+    icon: "assets/icono-192.png",
+    badge: "assets/icono-192.png",
+    vibrate: [200, 100, 200],
+    data: { url: msg.url || "./" },
+  }));
+});
+
+// Al tocar la notificación, abrir (o traer al frente) la app
+self.addEventListener("notificationclick", e => {
+  e.notification.close();
+  const target = new URL(e.notification.data && e.notification.data.url || "./", self.registration.scope).href;
+  e.waitUntil(self.clients.matchAll({ type: "window", includeUncontrolled: true }).then(list => {
+    const open = list.find(c => c.url.startsWith(self.registration.scope));
+    return open ? open.focus() : self.clients.openWindow(target);
+  }));
 });

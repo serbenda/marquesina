@@ -1,38 +1,53 @@
-// Proxy de marquesina (Cloudflare Workers, plan gratuito).
+// Proxy y avisos de marquesina (Cloudflare Workers, plan gratuito).
 //
-//  /crtm/<Get*.php>?...   -> API del Consorcio de Transportes (www.crtm.es/widgets/api):
-//                            tiempos de interurbanos y urbanos de Alcobendas, Sanse, etc.
+//  /crtm/<Get*.php>?...   -> API del Consorcio de Transportes (www.crtm.es/widgets/api): tiempos y
+//                            posición de interurbanos, urbanos de otros municipios y Metro.
 //                            El Consorcio no permite llamadas desde otras webs (CORS).
-//  /emt/arrives/<parada>  -> Llegadas de EMT Madrid (con posición GPS de cada bus).
-//                            El worker inicia sesión en Mobility Labs con las claves de la
-//                            aplicación marquesina, así nadie tiene que registrarse.
+//  /emt/arrives/<parada>  -> Llegadas de EMT Madrid (con posición GPS de cada bus). El worker inicia
+//                            sesión en Mobility Labs, así nadie tiene que registrarse.
+//  /push/key              -> Clave pública VAPID para suscribirse a las notificaciones.
+//  /push/subscribe        -> (POST) Guarda o actualiza una suscripción y sus avisos.
+//  /push/unsubscribe      -> (POST) Borra una suscripción.
+//  /push/test             -> (POST) Envía una notificación de prueba a una suscripción.
+//  Cron (cada minuto)     -> Revisa los avisos activos y envía "Sal ya" cuando toca.
 //
+// Las suscripciones viven en un Durable Object (PushHub, almacenamiento SQLite del plan gratuito).
 // Secretos (Cloudflare > Worker > Settings > Variables and Secrets), al menos una pareja:
 //   EMT_CLIENT_ID + EMT_PASSKEY   -> claves de la aplicación marquesina en Mobility Labs (preferido)
-//   EMT_EMAIL + EMT_PASSWORD      -> cuenta de Mobility Labs (respaldo: se usa si las claves de la
-//                                    aplicación no están o EMT las rechaza, p. ej. código 84 mientras
-//                                    la aplicación no está habilitada en el portal)
+//   EMT_EMAIL + EMT_PASSWORD      -> cuenta de Mobility Labs (respaldo, p. ej. con el código 84)
 //
-// Despliegue: Cloudflare > Worker marquesina > Edit code > pegar este archivo > Deploy.
+// Despliegue: automático desde GitHub (.github/workflows/worker.yml, con wrangler.toml).
+
+import { DurableObject } from "cloudflare:workers";
+import { parseEmt, parseCrtmTimes, bestLeave, alertActive, leaveMessage, crtmCode } from "./logic.js";
+import { generateVapidKeys, sendPush, isPushEndpoint } from "./push.js";
 
 const EMT = "https://openapi.emtmadrid.es";
 const CRTM = "https://www.crtm.es/widgets/api";
 const ALLOWED_ORIGINS = ["https://bendi.dev", "https://serbenda.github.io"];
 const CACHE_SECONDS = 20;
+const MAX_ALERTS = 10;          // avisos por suscripción
+const MAX_SUBSCRIPTIONS = 1000; // suscripciones en total
 
 function corsHeaders(req) {
   const origin = req.headers.get("Origin");
   return {
     "Access-Control-Allow-Origin": ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0],
-    "Access-Control-Allow-Methods": "GET,OPTIONS",
+    "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type",
     "Access-Control-Max-Age": "86400",
     "Vary": "Origin",
   };
 }
 
-const json = (obj, status, cors) =>
+const json = (obj, status = 200, cors = {}) =>
   new Response(JSON.stringify(obj), { status, headers: { ...cors, "Content-Type": "application/json; charset=utf-8" } });
+
+const withCors = (res, cors) => {
+  res = new Response(res.body, res);
+  for (const [k, v] of Object.entries(cors)) res.headers.set(k, v);
+  return res;
+};
 
 // ---------- Sesión de EMT (se reutiliza mientras el worker siga activo) ----------
 let emtToken = null, emtTokenExp = 0;
@@ -79,6 +94,135 @@ async function emtArrivals(stop, env) {
   }
 }
 
+// Llegadas de EMT con caché de 20 s compartida (web y avisos)
+async function emtArrivalsCached(stop, env, ctx) {
+  const cache = globalThis.caches && caches.default;
+  const key = new Request(`https://cache.marquesina/emt/${stop}`);
+  try { const hit = cache && await cache.match(key); if (hit) return hit.json(); } catch {}
+  const data = await emtArrivals(stop, env);
+  if (cache && data && data.data) {
+    const res = new Response(JSON.stringify(data), {
+      headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": `max-age=${CACHE_SECONDS}` },
+    });
+    const put = cache.put(key, res).catch(() => {});
+    ctx && ctx.waitUntil ? ctx.waitUntil(put) : await put;
+  }
+  return data;
+}
+
+// ---------- Avisos: validación de lo que manda la web ----------
+const TIME = /^([01]\d|2[0-3]):[0-5]\d$/;
+function cleanAlerts(list) {
+  if (!Array.isArray(list)) return [];
+  return list.slice(0, MAX_ALERTS).map(a => ({
+    id: String(a.id || "").slice(0, 40),
+    net: a.net === "emt" ? "emt" : "crtm",
+    stop: String(a.stop || "").replace(/[^\d_]/g, "").slice(0, 10),
+    alias: String(a.alias || "").slice(0, 24),
+    line: String(a.line || "").slice(0, 8),
+    walk: Math.max(0, Math.min(60, Number(a.walk) || 0)),
+    lead: Math.max(0, Math.min(15, Number(a.lead) || 0)),
+    days: (Array.isArray(a.days) ? a.days : []).map(Number).filter(d => d >= 1 && d <= 7),
+    from: TIME.test(a.from) ? a.from : "07:00",
+    to: TIME.test(a.to) ? a.to : "09:00",
+  })).filter(a => a.id && a.stop && a.walk && a.days.length);
+}
+
+const subId = async endpoint =>
+  [...new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(endpoint)))]
+    .slice(0, 12).map(b => b.toString(16).padStart(2, "0")).join("");
+
+// ---------- Durable Object: suscripciones y envío de avisos ----------
+export class PushHub extends DurableObject {
+  async vapid() {
+    let v = await this.ctx.storage.get("vapid");
+    if (!v) { v = await generateVapidKeys(); await this.ctx.storage.put("vapid", v); }
+    return v;
+  }
+
+  async fetch(req) {
+    const url = new URL(req.url);
+    if (url.pathname === "/key") return json({ publicKey: (await this.vapid()).publicKey });
+
+    const body = req.method === "POST" ? await req.json().catch(() => ({})) : {};
+    const sub = body.subscription;
+    if (!sub || !isPushEndpoint(sub.endpoint) || !sub.keys || !sub.keys.p256dh || !sub.keys.auth)
+      return json({ error: "Suscripción no válida" }, 400);
+    const id = await subId(sub.endpoint);
+
+    if (url.pathname === "/subscribe") {
+      const exists = await this.ctx.storage.get(`sub:${id}`);
+      if (!exists && (await this.ctx.storage.list({ prefix: "sub:", limit: MAX_SUBSCRIPTIONS })).size >= MAX_SUBSCRIPTIONS)
+        return json({ error: "Se ha alcanzado el máximo de suscripciones" }, 503);
+      const alerts = cleanAlerts(body.alerts);
+      await this.ctx.storage.put(`sub:${id}`, { subscription: { endpoint: sub.endpoint, keys: sub.keys }, alerts, updated: Date.now() });
+      return json({ ok: true, alerts: alerts.length });
+    }
+    if (url.pathname === "/unsubscribe") {
+      await this.ctx.storage.delete(`sub:${id}`);
+      return json({ ok: true });
+    }
+    if (url.pathname === "/test") {
+      const status = await sendPush(sub, {
+        title: "Marquesina: avisos activados",
+        body: "Así te llegarán los avisos para salir de casa.",
+        tag: "marquesina-prueba",
+      }, await this.vapid(), 60);
+      return json({ ok: status >= 200 && status < 300, status });
+    }
+    return json({ error: "No encontrado" }, 404);
+  }
+
+  // Llamado por el cron cada minuto (RPC). Usa this.env: los secretos de EMT llegan al Durable Object.
+  async check() {
+    const env = this.env;
+    const now = new Date();
+    const subs = await this.ctx.storage.list({ prefix: "sub:" });
+    const active = [];
+    for (const [key, rec] of subs) for (const a of rec.alerts || []) if (alertActive(a, now)) active.push({ key, rec, a });
+    if (!active.length) return { checked: 0, sent: 0 };
+
+    // Cada parada se consulta una sola vez aunque la usen varios avisos
+    const stops = new Map();
+    const getStop = (net, stop) => {
+      const k = `${net}:${stop}`;
+      if (!stops.has(k)) stops.set(k, (async () => {
+        try {
+          if (net === "emt") return parseEmt(await emtArrivalsCached(stop, env), stop);
+          const code = crtmCode(stop);
+          const j = await (await fetch(`${CRTM}/GetStopsTimes.php?codStop=${code}&type=1&orderBy=2&stopTimesByIti=3`, { cf: { cacheTtl: CACHE_SECONDS } })).json();
+          return { id: stop, name: (j.stopTimes && j.stopTimes.stop && j.stopTimes.stop.name) || `Parada ${stop}`, ...parseCrtmTimes(j, code) };
+        } catch { return null; }
+      })());
+      return stops.get(k);
+    };
+
+    const vapid = await this.vapid();
+    const sent = (await this.ctx.storage.get("sent")) || {};   // avisos ya enviados: no repetir el mismo bus
+    let count = 0;
+    for (const { key, rec, a } of active) {
+      const stop = await getStop(a.net, a.stop);
+      if (!stop) continue;
+      const best = bestLeave([{ stop, meta: { alias: a.alias, walk: a.walk, fav: true } }], 0, a.line || null);
+      if (!best || best.li.leave > a.lead * 60) continue;
+      // Identifica el bus por línea y hora prevista de llegada (redondeada a 2 min)
+      const busAt = Math.round((now.getTime() + best.li.bus.eta * 1000) / 120000);
+      const dedupe = `${key}|${a.id}|${best.group.line}|${busAt}`;
+      if (sent[dedupe]) continue;
+      const msg = leaveMessage(best);
+      const status = await sendPush(rec.subscription, { ...msg, url: "./" }, vapid, 120);
+      if (status === 404 || status === 410) { await this.ctx.storage.delete(key); continue; }   // suscripción caducada
+      if (status >= 200 && status < 300) { sent[dedupe] = now.getTime(); count++; }
+    }
+    // Olvida los envíos de hace más de 2 horas
+    for (const [k, t] of Object.entries(sent)) if (now.getTime() - t > 2 * 3600 * 1000) delete sent[k];
+    await this.ctx.storage.put("sent", sent);
+    return { checked: active.length, sent: count };
+  }
+}
+
+const hub = env => env.PUSH.get(env.PUSH.idFromName("hub"));
+
 export default {
   async fetch(req, env, ctx) {
     const cors = corsHeaders(req);
@@ -90,33 +234,35 @@ export default {
       const file = url.pathname.slice("/crtm/".length);
       if (!/^Get[A-Za-z]+\.php$/.test(file)) return new Response("Not found", { status: 404, headers: cors });
       const upstream = await fetch(`${CRTM}/${file}${url.search}`, { cf: { cacheTtl: CACHE_SECONDS } });
-      const res = new Response(upstream.body, upstream);
-      for (const [k, v] of Object.entries(cors)) res.headers.set(k, v);
-      return res;
+      return withCors(upstream, cors);
     }
 
     // ---- EMT con las claves de marquesina ----
     const m = url.pathname.match(/^\/emt\/arrives\/(\d{1,6})\/?$/);
     if (m) {
-      const cache = caches.default;
-      const key = new Request(`https://cache.marquesina/emt/${m[1]}`);
-      let res = await cache.match(key);
-      if (!res) {
-        try {
-          const data = await emtArrivals(m[1], env);
-          res = new Response(JSON.stringify(data), {
-            headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": `max-age=${CACHE_SECONDS}` },
-          });
-          if (data && data.data) ctx.waitUntil(cache.put(key, res.clone()));
-        } catch (e) {
-          return json({ code: "ERR", description: e.message }, 502, cors);
-        }
+      try {
+        return json(await emtArrivalsCached(m[1], env, ctx), 200, cors);
+      } catch (e) {
+        return json({ code: "ERR", description: e.message }, 502, cors);
       }
-      res = new Response(res.body, res);
-      for (const [k, v] of Object.entries(cors)) res.headers.set(k, v);
-      return res;
+    }
+
+    // ---- Avisos ----
+    const p = url.pathname.match(/^\/push\/(key|subscribe|unsubscribe|test)$/);
+    if (p) {
+      if (p[1] !== "key" && req.method !== "POST") return json({ error: "Usa POST" }, 405, cors);
+      const res = await hub(env).fetch(new Request(`https://hub/${p[1]}`, {
+        method: req.method, headers: { "Content-Type": "application/json" },
+        body: req.method === "POST" ? await req.text() : undefined,
+      }));
+      return withCors(res, cors);
     }
 
     return new Response("Not found", { status: 404, headers: cors });
+  },
+
+  // Cron: cada minuto revisa los avisos activos
+  async scheduled(event, env, ctx) {
+    ctx.waitUntil(hub(env).check());
   },
 };

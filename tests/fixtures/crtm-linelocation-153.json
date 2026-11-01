@@ -1,0 +1,25 @@
+{
+ "vehiclesLocation": {
+  "VehicleLocation": {
+   "codVehicle": "1628MVP",
+   "line": {
+    "codLine": "8__153___",
+    "shortDescription": "153",
+    "description": "153-MADRID (Plaza de Castilla)-ALCOBENDAS-ROSA LUXEMBURGO",
+    "codMode": "8",
+    "updateDate": "2025-06-17T15:17:22+02:00",
+    "updateKmlDate": "2025-06-17T15:14:22+02:00",
+    "nightService": 0,
+    "active": true,
+    "shortItinerary": {},
+    "companyCode": ""
+   },
+   "direction": 1,
+   "coordinates": {
+    "longitude": -3.630625009536743,
+    "latitude": 40.54088592529297
+   },
+   "service": "711"
+  }
+ }
+}

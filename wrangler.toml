@@ -8,3 +8,16 @@ compatibility_date = "2025-01-01"
 workers_dev = true
 # Conserva las variables creadas desde el panel de Cloudflare
 keep_vars = true
+
+# Avisos: las suscripciones se guardan en un Durable Object con almacenamiento SQLite (plan gratuito)
+[[durable_objects.bindings]]
+name = "PUSH"
+class_name = "PushHub"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["PushHub"]
+
+# Cada minuto se revisan los avisos activos
+[triggers]
+crons = ["* * * * *"]
