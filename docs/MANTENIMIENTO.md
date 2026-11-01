@@ -42,6 +42,7 @@ flowchart LR
 | Workflows | `pages.yml` (web), `worker.yml` (worker), `healthcheck.yml` (chequeo horario), `tests.yml` (tests en cada PR) |
 | Durable Object | `PushHub` (suscripciones y claves VAPID de los avisos) |
 | Cron del worker | `* * * * *` (revisa los avisos cada minuto) |
+| Repetidor de respaldo | Deno Deploy, organización `serbenda`, app `marquesina`: https://marquesina.serbenda.deno.net (ver [RESPALDO.md](RESPALDO.md)) |
 
 ---
 
@@ -229,6 +230,8 @@ El worker devuelve el código que da EMT para cada forma de entrar, sin incluir 
 
 ## 6. "No se pudo conectar…" en una red concreta
 
+**Primero: ¿hay partido de fútbol?** Si sí, casi seguro es el bloqueo de LaLiga a IP de Cloudflare. La web debería pasar sola al repetidor de Deno Deploy. Si tampoco funciona, abre https://marquesina.serbenda.deno.net/push/key: si responde, recarga la web forzando; si no, revisa el repetidor en console.deno.com (*Builds* y *Logs*). Todo en [RESPALDO.md](RESPALDO.md).
+
 Si la web funciona con datos móviles pero no en una red (casa, oficina), esa red puede bloquear `*.workers.dev`. La web prueba sola `api.bendi.dev` y `workers.dev`, así que basta con que una de las dos funcione. Si fallan las dos, revisar el filtro de esa red (Pi-hole, AdGuard, router, antivirus). Historia completa y diagnóstico en [DOMINIO.md](DOMINIO.md).
 
 ## 7. Avisos que no llegan
@@ -265,4 +268,5 @@ flowchart TB
 - [ ] El token `CLOUDFLARE_API_TOKEN` sigue siendo válido (Cloudflare → API Tokens).
 - [ ] El cron del worker sigue activo y el aviso de prueba llega (§4).
 - [ ] Los tests pasan (`npm test` o el workflow *Tests*).
+- [ ] El repetidor responde (`https://marquesina.serbenda.deno.net/push/key`) y su último build en Deno Deploy está en verde.
 - [ ] La API del Consorcio mantiene el mismo formato (ver ARQUITECTURA §3.2).

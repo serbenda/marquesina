@@ -2,7 +2,18 @@
 
 Esta guía explica **qué es cada pieza de marquesina, cómo encajan y cómo montarlo todo desde cero, paso a paso**, para alguien que no ha usado nunca GitHub, Cloudflare ni un DNS. No hace falta saber programar.
 
-Si ya conoces el proyecto y buscas un detalle técnico, ve a [REFERENCIA.md](REFERENCIA.md) (cómo funciona cada parte por dentro, con diagramas), [ARQUITECTURA.md](ARQUITECTURA.md) (por qué se diseñó así), [MANTENIMIENTO.md](MANTENIMIENTO.md) (tareas y errores) o [DOMINIO.md](DOMINIO.md) (`api.bendi.dev` y el DNS).
+Si ya conoces el proyecto y buscas algo concreto:
+
+| Documento | Qué tiene |
+|---|---|
+| [REFERENCIA.md](REFERENCIA.md) | Cómo funciona cada parte por dentro, con diagramas |
+| [ARQUITECTURA.md](ARQUITECTURA.md) | Por qué se diseñó así |
+| [MANTENIMIENTO.md](MANTENIMIENTO.md) | Tareas concretas y errores |
+| [DOMINIO.md](DOMINIO.md) | `api.bendi.dev` y el DNS |
+| [RESPALDO.md](RESPALDO.md) | El repetidor para los bloqueos del fútbol |
+| [HISTORIA.md](HISTORIA.md) | Cómo se construyó, paso a paso |
+| [OPERACIONES.md](OPERACIONES.md) | Vigilancia, incidentes y recuperación (SRE) |
+| [SEGURIDAD.md](SEGURIDAD.md) | Amenazas y protecciones |
 
 ---
 
@@ -67,6 +78,8 @@ Imagina que marquesina es **una tienda de información sobre autobuses**:
 | **Cloudflare** | La **empresa de mensajería** y la **centralita** | Aloja el worker y, desde el cambio de noviembre de 2026, también la guía telefónica (DNS) de bendi.dev |
 | **Porkbun** | El **registro de la propiedad** | La empresa donde está comprado y renovado el dominio `bendi.dev` |
 | **Mobility Labs** | El **carné de cliente** de EMT | Donde se dio de alta marquesina para que EMT le deje pedir datos |
+| **El repetidor** (Deno Deploy) | Un **segundo mostrador en otra calle**, por si cortan la principal | Un programa mínimo en otra empresa (Deno) que reenvía las peticiones al worker cuando Cloudflare está bloqueado |
+| **El bloqueo de LaLiga** | Los días de partido, la policía **corta una calle entera** porque en un portal venden fútbol pirata, y nadie puede llegar a ninguna tienda de esa calle | Las operadoras bloquean direcciones IP de Cloudflare que comparten miles de webs, entre ellas el worker |
 
 ¿Por qué hace falta el "dependiente" (el worker) y la web no va directamente a los proveedores? Por dos motivos:
 
@@ -105,6 +118,12 @@ Imagina que marquesina es **una tienda de información sobre autobuses**:
 | **Cron** | Una tarea programada que se repite (aquí, revisar los avisos cada minuto) |
 | **Durable Object** | Una pequeña base de datos dentro de Cloudflare donde el worker guarda los avisos de cada persona |
 | **Despliegue (deploy)** | Publicar una versión nueva del código para que la use la gente |
+| **IP (dirección IP)** | La "dirección numérica" de un servidor, como `188.114.96.5`. Muchas webs pueden compartir la misma |
+| **Bloqueo por IP** | Cuando tu compañía de Internet no deja pasar nada hacia ciertas IP. Afecta a todas las webs que estén detrás, aunque no tengan culpa |
+| **Bloqueo de LaLiga** | Desde 2025, durante los partidos, Movistar, MasOrange (Orange, Jazztel, Yoigo…), Vodafone y DIGI bloquean IP de Cloudflare por orden judicial contra el fútbol pirata |
+| **Repetidor (relay)** | Un programa que recibe una petición y la reenvía a otro sitio sin cambiarla. El de marquesina está en Deno Deploy |
+| **Deno Deploy** | Un servicio gratuito, de otra empresa distinta de Cloudflare, para publicar programas pequeños en Internet. Aloja el repetidor |
+| **VPN** | Una conexión que hace que tu tráfico salga a Internet desde otro sitio (otro país, otra red). Sirve para saltarse un bloqueo de tu compañía |
 
 ---
 
@@ -132,6 +151,10 @@ flowchart TB
     CRON["Cron cada minuto"]
   end
 
+  subgraph Deno["🦕 Deno Deploy (organización serbenda)"]
+    RL["Repetidor 'marquesina'<br/>marquesina.serbenda.deno.net"]
+  end
+
   subgraph Datos["🚌 Proveedores de datos"]
     EMT["API de EMT Madrid<br/>(Mobility Labs)"]
     CRTM["API del Consorcio<br/>de Transportes"]
@@ -146,6 +169,9 @@ flowchart TB
   ACT -- "cada hora: ¿todo responde?" --> WK
   PAGES -- "descarga la web" --> WEB
   WEB -- "pide datos" --> WK
+  WEB -. "si Cloudflare está bloqueado" .-> RL
+  RL -- "reenvía" --> WK
+  REPO -- "cada cambio en main" --> RL
   WK --> EMT
   WK --> CRTM
   CRON --> DO
@@ -240,17 +266,76 @@ flowchart LR
   D -- "www.bendi.dev → serbenda.github.io" --> GH
 ```
 
-### 5.6 Dos direcciones para el mismo worker
+### 5.6 Tres caminos para llegar al mismo worker
 
 ```mermaid
 flowchart LR
-  W["Web"] -- "1.º intento" --> A["api.bendi.dev"]
-  W -. "si no responde<br/>(red que bloquea, etc.)" .-> B["marquesina.serbenda.workers.dev"]
-  A --> K["Mismo worker"]
+  W["📱 Web"] -- "camino 1" --> A["api.bendi.dev<br/>(Cloudflare)"]
+  W -- "camino 2" --> B["marquesina.serbenda.workers.dev<br/>(Cloudflare)"]
+  W -- "camino 3" --> R["marquesina.serbenda.deno.net<br/>(Deno Deploy)"]
+  A --> K["⚙️ El mismo worker"]
   B --> K
+  R -- "reenvía de servidor<br/>a servidor" --> A
 ```
 
-Algunas redes (Pi-hole, AdGuard, routers, empresas) bloquean todo lo que termina en `workers.dev`. Por eso existe `api.bendi.dev`. La web prueba primero una y, si falla, la otra, sin que la persona note nada.
+| Camino | Por qué existe | Qué lo puede bloquear |
+|---|---|---|
+| **1 · `api.bendi.dev`** | Dirección propia, la principal | El bloqueo de LaLiga (va por IP de Cloudflare) |
+| **2 · `marquesina.serbenda.workers.dev`** | La dirección que da Cloudflare | Filtros de casa o de empresa (Pi-hole, AdGuard, routers…) que bloquean todo `*.workers.dev`, y también el bloqueo de LaLiga |
+| **3 · `marquesina.serbenda.deno.net`** | Repetidor en otra empresa, con otras IP | Solo si algún día bloquearan también IP de Deno |
+
+### 5.7 Cómo elige la web el camino
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant W as Web (tu móvil)
+  participant M as Memoria del navegador
+  participant A as api.bendi.dev
+  participant B as workers.dev
+  participant R as Repetidor (Deno)
+  W->>M: ¿Qué camino funcionó la última vez?
+  M-->>W: api.bendi.dev
+  W->>A: ¿Estás? (máximo 4 s)
+  Note over A: ❌ Bloqueado: no contesta
+  par Prueba los otros dos a la vez
+    W->>B: ¿Estás?
+    Note over B: ❌ También bloqueado
+  and
+    W->>R: ¿Estás?
+    R-->>W: ✅ Sí
+  end
+  W->>M: Apunta: el repetidor
+  W->>R: Pide las paradas
+  R->>A: Las pide al worker (sin bloqueo)
+  A-->>R: Datos
+  R-->>W: Datos → "En vivo"
+```
+
+- La primera vez, durante un bloqueo, tarda **unos 4 segundos** más en arrancar. Las siguientes, nada, porque recuerda el camino.
+- Cuando el bloqueo termina, el camino guardado sigue funcionando (el repetidor siempre llega), así que no hay que hacer nada.
+- Si en mitad del uso un camino deja de contestar, la web prueba los otros a la vez y cambia sola.
+
+### 5.8 La historia: por qué hay tres caminos
+
+```mermaid
+timeline
+  title 1 de noviembre de 2026
+  Mañana : "No se pudo conectar" en casa
+         : Diagnóstico - la red bloquea *.workers.dev
+  Tarde : Se crea api.bendi.dev (camino 1)
+        : DNS de bendi.dev pasa a Cloudflare
+  Domingo de fútbol : Sigue sin ir en casa
+                    : Diagnóstico - bloqueo de LaLiga a IP de Cloudflare
+  Noche : Repetidor en Deno Deploy (camino 3)
+        : Probado con el bloqueo activo - En vivo
+```
+
+1. **Primer síntoma:** en casa, la web decía *"No se pudo conectar con el Consorcio"*, pero con datos móviles funcionaba.
+2. **Primera causa encontrada:** la red de casa no llegaba a nada que terminara en `workers.dev`. Solución: dirección propia, `api.bendi.dev` (ver [DOMINIO.md](DOMINIO.md)).
+3. **Segundo síntoma:** con `api.bendi.dev` funcionando en el resto de Internet, en casa seguía sin ir.
+4. **Causa real:** `api.bendi.dev` y `workers.dev` tenían **las mismas IP** (`188.114.96.5` y `188.114.97.5`), y esas IP estaban bloqueadas por el fútbol. Daba igual el nombre.
+5. **Solución:** un camino que no pase por Cloudflare. Se probó en ese mismo momento, con el bloqueo activo, y la web salió **En vivo** (ver [RESPALDO.md](RESPALDO.md)).
 
 ---
 
@@ -264,6 +349,7 @@ Algunas redes (Pi-hole, AdGuard, routers, empresas) bloquean todo lo que termina
 | **Mobility Labs (EMT)** | Permiso para pedir datos de EMT | https://mobilitylabs.emtmadrid.es | serbenda | Gratis |
 | **Consorcio de Transportes** | Datos de interurbanos, urbanos y Metro | https://www.crtm.es | No necesita cuenta | Gratis |
 | **OpenStreetMap** | El mapa | https://www.openstreetmap.org | No necesita cuenta | Gratis |
+| **Deno Deploy** | Repetidor de respaldo (bloqueos de LaLiga) | https://console.deno.com | Entrar con GitHub (serbenda) · organización `serbenda` | Gratis |
 
 ```mermaid
 flowchart LR
@@ -272,6 +358,7 @@ flowchart LR
     S1["EMT_CLIENT_ID · EMT_PASSKEY<br/>EMT_EMAIL · EMT_PASSWORD"] --> L1["Cloudflare → Worker marquesina<br/>→ Settings → Variables and Secrets"]
     S2["CLOUDFLARE_API_TOKEN"] --> L2["GitHub → repo marquesina<br/>→ Settings → Secrets and variables → Actions"]
     S3["Claves VAPID de los avisos"] --> L3["Durable Object PushHub<br/>(las genera el worker solo)"]
+    S4["Repetidor"] --> L4["NO necesita ningún secreto"]
   end
 ```
 
@@ -294,6 +381,7 @@ flowchart TB
   F6 --> F7["Fase 7<br/>Dominio propio<br/>api.bendi.dev"]
   F7 --> F8["Fase 8<br/>Primer despliegue<br/>y comprobaciones"]
   F8 --> F9["Fase 9<br/>Avisos por email<br/>si algo falla"]
+  F9 --> F10["Fase 10<br/>Repetidor de respaldo<br/>(Deno Deploy)"]
 ```
 
 ### Fase 0 · Qué necesitas
@@ -538,6 +626,92 @@ El robot **Chequeo de marquesina** revisa cada hora que la web, EMT, el Consorci
 
 ---
 
+### Fase 10 · Repetidor de respaldo en Deno Deploy (10 min)
+
+**Objetivo:** que marquesina funcione aunque tu compañía de Internet bloquee Cloudflare durante el fútbol.
+
+```mermaid
+flowchart TB
+  A["0 · Que NO haya partido<br/>(o usar una VPN)"] --> B["1 · Entrar en console.deno.com<br/>con GitHub"]
+  B --> C["2 · Crear la organización serbenda"]
+  C --> D["3 · + New App → repo marquesina"]
+  D --> E["4 · Edit app config:<br/>Dynamic + relay/main.js"]
+  E --> F["5 · Create App"]
+  F --> G["6 · Comprobar /push/key"]
+```
+
+**0. Elige el momento**
+
+⚠️ La pantalla de inicio de sesión de Deno usa una verificación anti-robots **alojada en Cloudflare**, así que durante un bloqueo tampoco carga. Verás esto:
+
+> *Verification failed. Please complete the challenge below and try again. If no challenge appears, allow scripts from challenges.cloudflare.com.*
+
+Si te sale, espera a que acabe el partido, hazlo al día siguiente o conéctate con una VPN.
+
+**1. Entrar**
+1. 🖱️ Abre https://console.deno.com
+2. 🖱️ **Sign in with GitHub**.
+3. 🖱️ GitHub te pide permiso: **Authorize**.
+
+**2. Crear la organización**
+1. ⌨️ Si pide un nombre de organización: `serbenda`.
+2. ⚠️ No se puede cambiar después y forma parte de la dirección (`…serbenda.deno.net`).
+3. Arriba saldrá un aviso amarillo, *"Your organization is not verified yet"*. **Ignóralo**: los límites gratuitos sobran.
+
+**3. Nueva app**
+1. 🖱️ **+ New App** (o *Create a new application*).
+2. En *Choose a GitHub repository*, elige **serbenda** y **marquesina**.
+3. Si no aparece el repo: 🖱️ **Configure GitHub App permissions** → en GitHub, **Only select repositories** → **marquesina** → **Save**.
+
+**4. Configuración** (🖱️ **Edit app config**)
+
+Deno propone una configuración que **no vale** tal cual. Así la verás al principio y así tiene que quedar:
+
+| Campo | Lo que propone Deno | ✅ Lo que hay que poner |
+|---|---|---|
+| Framework preset | No Preset | **No Preset** (igual) |
+| Install command | `deno install` | **vacío** (bórralo) |
+| Build command | `-` | **vacío** (igual) |
+| Pre-deploy command | `-` | **vacío** (igual) |
+| Runtime configuration | Static | **Dynamic** |
+| Static directory | `.` | *(desaparece al elegir Dynamic)* |
+| Dynamic Entrypoint | — | `relay/main.js` |
+| Single page app | Disabled | Disabled (igual) |
+| Cron jobs | Enabled | Da igual |
+| Build timeout / memory | 5 minutes / 3GiB | No tocar |
+
+Más abajo, en la misma pantalla:
+
+| Campo | ✅ Valor |
+|---|---|
+| App name | `marquesina` |
+| Environment variables | **Ninguna** (no pulses *Add Environment variables*) |
+| Routing Details → Production | Debe poner `https://marquesina.serbenda.deno.net` |
+| Deployment targets | **Managed** → **Free Regions** (no pulses *Upgrade*) |
+
+⚠️ **Por qué importa "Dynamic":** con *Static* Deno publicaría los archivos del repositorio como una web más, y el repetidor no funcionaría (todo daría 404 o la página de marquesina).
+
+**5. Crear**
+1. 🖱️ **Create App**.
+2. Verás los pasos *Queue → Prepare → Install → Build → Deploy → Warm up → Route*. En *Install* y *Build* pondrá *No … command configured*: es lo correcto.
+3. ✅ Al final, en **Timelines**, *Production* debe decir **Serving traffic**.
+
+**6. Comprobar**
+
+| Abre | Debe salir |
+|---|---|
+| https://marquesina.serbenda.deno.net/ | `{"ok":true,"servicio":"repetidor de marquesina"}` |
+| https://marquesina.serbenda.deno.net/push/key | `{"publicKey":"…"}`, **la misma** que en https://api.bendi.dev/push/key |
+| https://marquesina.serbenda.deno.net/crtm/stop/06756 | Texto largo con `stopTimes` |
+
+✅ **Bien si:** salen las tres. A partir de ahí, Deno vuelve a publicar el repetidor solo cada vez que cambia `main`, y el chequeo horario lo vigila.
+
+ℹ️ Si la dirección que te da Deno **no** es `marquesina.serbenda.deno.net`, hay que cambiarla en `index.html` (`PROXIES`), en `.github/workflows/healthcheck.yml` y en [RESPALDO.md](RESPALDO.md).
+
+Toda la explicación técnica está en [RESPALDO.md](RESPALDO.md).
+
+---
+
 ## 8. Hacer un cambio en la web (el día a día)
 
 ```mermaid
@@ -586,7 +760,9 @@ flowchart TB
   Q1 -- "Sí" --> Q2{"¿Qué pone la<br/>etiqueta de arriba?"}
   Q2 -- "Sin paradas" --> A2["Añade una con<br/>Cerca de mí, Zona o Buscar paradas"]
   Q2 -- "Sin conexión" --> Q3{"¿Funciona con datos móviles<br/>(Wi-Fi apagado)?"}
-  Q3 -- "Sí" --> A3["Tu red bloquea algo.<br/>Revisa Pi-hole/AdGuard/router.<br/>Ver DOMINIO.md"]
+  Q3 -- "Sí" --> Q6{"¿Hay partido de fútbol<br/>ahora? (hayahora.futbol)"}
+  Q6 -- "Sí" --> A8["Bloqueo de LaLiga.<br/>La web debería usar el repetidor sola.<br/>¿Responde marquesina.serbenda.deno.net/push/key?<br/>Ver RESPALDO.md"]
+  Q6 -- "No" --> A3["Tu red bloquea algo.<br/>Revisa Pi-hole/AdGuard/router.<br/>Ver DOMINIO.md"]
   Q3 -- "No" --> Q4{"¿Responde<br/>api.bendi.dev/push/key?"}
   Q4 -- "No" --> A4["Worker caído:<br/>Actions → 'Desplegar worker' → Run workflow.<br/>Revisar logs en Cloudflare"]
   Q4 -- "Sí" --> A5["El fallo es de EMT o del Consorcio:<br/>MANTENIMIENTO.md §5"]
@@ -600,7 +776,11 @@ flowchart TB
 | Lo que ves | Qué pasa | Qué hacer |
 |---|---|---|
 | La web sigue igual después de un cambio | El navegador guarda la versión anterior | **Ctrl/Cmd + Shift + R** o añadir `?v=N` |
-| *"No se pudo conectar…"* solo en casa | Tu red bloquea `workers.dev` | Debería arreglarse solo con `api.bendi.dev`; si no, revisa tu filtro de red |
+| *"No se pudo conectar…"* solo en casa, en día de partido | Bloqueo de LaLiga a IP de Cloudflare | La web usa sola el repetidor. Si tampoco va, comprueba https://marquesina.serbenda.deno.net/push/key ([RESPALDO.md](RESPALDO.md)) |
+| *"No se pudo conectar…"* solo en casa, sin partido | Tu red bloquea `workers.dev` u otra cosa | Revisa tu filtro de red (Pi-hole, AdGuard, router) |
+| La web tarda unos segundos más en arrancar | Está probando caminos porque el guardado no contesta | Normal durante un bloqueo; la siguiente vez arranca rápido |
+| Email *"Chequeo de marquesina failed"* en el paso **Repetidor de respaldo** | El repetidor de Deno no responde | Deno → app marquesina → **Builds** y **Logs**; relanzar el último build |
+| No puedo entrar en console.deno.com (*Verification failed*) | Su anti-robots está en Cloudflare y hay bloqueo | Esperar al final del partido o usar una VPN |
 | *"Sin datos nuevos · son de hace 3 min"* | El Consorcio no respondió en ese momento | Nada: se actualiza solo en la siguiente vuelta |
 | *"EMT rechazó el inicio de sesión (84…)"* | La aplicación de EMT no está habilitada | Comprobar que existen `EMT_EMAIL` y `EMT_PASSWORD` (fase 5) |
 | No llega el aviso de prueba | Permiso de notificaciones denegado, o iPhone sin la app instalada | Permitir notificaciones; en iPhone, instalar la app primero |
@@ -626,6 +806,10 @@ flowchart LR
     W["worker.js<br/>proxy y avisos"]
     T["wrangler.toml<br/>configuración del worker"]
   end
+  subgraph Respaldo["Lo que vive en Deno Deploy"]
+    RJ["relay/relay.js<br/>reenvía al worker"]
+    RM["relay/main.js<br/>lo arranca"]
+  end
   subgraph Robots["Robots de GitHub (.github/workflows)"]
     R1["pages.yml · publica la web"]
     R2["worker.yml · publica el worker"]
@@ -641,6 +825,9 @@ flowchart LR
   W --> P
   TT --> L
   TT --> W
+  TT --> RJ
+  RM --> RJ
+  RJ -. "reenvía a" .-> W
 ```
 
 Cada archivo de código empieza con un bloque que explica qué hace, quién lo usa y sus secciones. Cada función tiene encima su descripción con un ejemplo. Antes de cambiar nada, lee [CONTRIBUTING.md](../CONTRIBUTING.md).
@@ -655,6 +842,8 @@ Cada archivo de código empieza con un bloque que explica qué hace, quién lo u
 | Cada cuánto se actualiza | Opciones de `fEvery` y `DEF.every` en `index.html` |
 | Cada cuánto revisa los avisos | `crons` en `wrangler.toml` |
 | Nombre, colores o iconos de la app instalada | `manifest.webmanifest` y `assets/` |
+| Las direcciones del worker (o del repetidor) | `PROXIES` en `index.html` (y el chequeo en `healthcheck.yml`) |
+| Qué deja pasar el repetidor | `relay/relay.js` (y su test en `tests/relay.test.js`) |
 
 ---
 
@@ -662,12 +851,14 @@ Cada archivo de código empieza con un bloque que explica qué hace, quién lo u
 
 - [ ] La web carga y pone **En vivo**.
 - [ ] El aviso de prueba llega al móvil.
-- [ ] GitHub → **Actions**: los 4 robots en verde.
+- [ ] GitHub → **Actions**: los 4 robots en verde (el chequeo comprueba también el repetidor).
 - [ ] Cloudflare → worker `marquesina` → **Metrics**: lejos del límite de 100.000 peticiones al día.
 - [ ] Cloudflare → **API Tokens**: `marquesina-github` sigue activo.
 - [ ] Mobility Labs: la aplicación `marquesina` sigue activa (si la habilitan, el código 84 desaparece).
 - [ ] Porkbun: `bendi.dev` con **renovación automática** activada y la tarjeta al día.
 - [ ] `https://dns.google/resolve?name=bendi.dev&type=NS` sigue apuntando a Cloudflare.
+- [ ] Deno Deploy → `serbenda` → `marquesina`: el último build en verde y *Production* en **Serving traffic**.
+- [ ] https://marquesina.serbenda.deno.net/push/key devuelve la misma clave que https://api.bendi.dev/push/key.
 
 ---
 
@@ -678,6 +869,7 @@ Cada archivo de código empieza con un bloque que explica qué hace, quién lo u
 | Web | https://bendi.dev/marquesina/ |
 | Repo | https://github.com/serbenda/marquesina |
 | Worker | `marquesina` · https://api.bendi.dev · https://marquesina.serbenda.workers.dev |
+| Repetidor | Deno Deploy, organización `serbenda`, app `marquesina` · https://marquesina.serbenda.deno.net · arranque `relay/main.js` |
 | Cuenta de Cloudflare (ID) | `81707420145ed400a786dcb658bedb6e` |
 | Nameservers de bendi.dev | `hassan.ns.cloudflare.com` · `magali.ns.cloudflare.com` |
 | Secretos del worker (nombres) | `EMT_CLIENT_ID` · `EMT_PASSKEY` · `EMT_EMAIL` · `EMT_PASSWORD` |

@@ -15,7 +15,7 @@
 // - Los datos de autobuses (worker de Cloudflare y repetidor de Deno) y las teselas del mapa NO se guardan: tienen que ser en vivo.
 // - Recibe los avisos programados (Web Push) y los muestra como notificación.
 
-const VERSION = "marquesina-v4";   // cambiarlo obliga a renovar la caché en todos los dispositivos
+const VERSION = "marquesina-v5";   // cambiarlo obliga a renovar la caché en todos los dispositivos
 const SHELL = [
   "./",
   "./manifest.webmanifest",

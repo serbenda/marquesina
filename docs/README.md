@@ -11,6 +11,9 @@ flowchart TB
   Q -- "api.bendi.dev o el DNS" --> D["DOMINIO.md"]
   Q -- "No va durante el fútbol<br/>(bloqueo de LaLiga)" --> RS["RESPALDO.md"]
   Q -- "Cambiar el código" --> C["../CONTRIBUTING.md<br/>../AGENTS.md"]
+  Q -- "Saber cómo se construyó<br/>y por qué" --> H["HISTORIA.md"]
+  Q -- "Operar el servicio:<br/>vigilancia, incidentes,<br/>recuperación" --> O["OPERACIONES.md"]
+  Q -- "Seguridad: amenazas,<br/>secretos, cuentas" --> S["SEGURIDAD.md"]
 ```
 
 | Documento | Para quién | Qué tiene |
@@ -20,6 +23,9 @@ flowchart TB
 | [ARQUITECTURA.md](ARQUITECTURA.md) | Quien quiere entender las decisiones | Piezas, fuentes de datos, por qué un proxy, seguridad, ideas pendientes |
 | [MANTENIMIENTO.md](MANTENIMIENTO.md) | Quien mantiene el servicio | Mobility Labs, Cloudflare, GitHub Pages, comprobaciones, errores y revisión periódica |
 | [DOMINIO.md](DOMINIO.md) | Quien toca el DNS | Por qué `api.bendi.dev`, registros, nameservers, pasos y vuelta atrás |
+| [HISTORIA.md](HISTORIA.md) | Todos | Cómo se construyó, paso a paso, con fechas, decisiones (ADR), lo configurado fuera del código y lecciones aprendidas |
+| [OPERACIONES.md](OPERACIONES.md) | SRE / DevOps | Inventario, dependencias, qué pasa si cae cada pieza, SLO, vigilancia, CI/CD, runbooks, recuperación ante desastres, capacidad y postmortems |
+| [SEGURIDAD.md](SEGURIDAD.md) | Arquitectura de seguridad | Activos, fronteras de confianza, modelo de amenazas STRIDE, controles, ciclo de vida de secretos, cuentas, cadena de suministro y riesgos |
 | [RESPALDO.md](RESPALDO.md) | Quien mantiene el servicio | Repetidor en Deno Deploy para los bloqueos de LaLiga: por qué, cómo se monta y cómo se comprueba |
 
 En la raíz del repositorio:
