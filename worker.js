@@ -6,7 +6,6 @@
 //  /emt/arrives/<parada>  -> Llegadas de EMT Madrid (con posición GPS de cada bus).
 //                            El worker inicia sesión en Mobility Labs con las claves de la
 //                            aplicación marquesina, así nadie tiene que registrarse.
-//  /v2/...                -> Paso directo a la API de EMT (para quien use su propia cuenta).
 //
 // Secretos necesarios (Cloudflare > Worker > Settings > Variables and Secrets):
 //   EMT_CLIENT_ID  -> X-ClientId de la aplicación en Mobility Labs
@@ -23,8 +22,8 @@ function corsHeaders(req) {
   const origin = req.headers.get("Origin");
   return {
     "Access-Control-Allow-Origin": ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0],
-    "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
-    "Access-Control-Allow-Headers": "email,password,accessToken,Content-Type",
+    "Access-Control-Allow-Methods": "GET,OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type",
     "Access-Control-Max-Age": "86400",
     "Vary": "Origin",
   };
@@ -101,17 +100,6 @@ export default {
         }
       }
       res = new Response(res.body, res);
-      for (const [k, v] of Object.entries(cors)) res.headers.set(k, v);
-      return res;
-    }
-
-    // ---- EMT directo (cuenta propia) ----
-    if (url.pathname.startsWith("/v2/")) {
-      const upstream = await fetch(EMT + url.pathname + url.search, {
-        method: req.method, headers: req.headers,
-        body: req.method === "POST" ? await req.text() : undefined,
-      });
-      const res = new Response(upstream.body, upstream);
       for (const [k, v] of Object.entries(cors)) res.headers.set(k, v);
       return res;
     }
