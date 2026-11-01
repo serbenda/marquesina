@@ -1,51 +1,123 @@
 # marquesina
 
-Mapa en tiempo real de los autobuses que llegan a tus paradas (EMT Madrid, y también interurbanos y urbanos de Alcobendas, San Sebastián de los Reyes y el resto de la Comunidad): dónde están, cuánto les falta y si te da tiempo a salir.
+**Tus autobuses de Madrid en el mapa, en tiempo real.**
 
-## Qué hace
+marquesina muestra los autobuses que van a llegar a tus paradas: dónde están, cuánto les falta y si te da tiempo a salir. Es como la pantalla luminosa de una marquesina, pero en el móvil y para las paradas que tú elijas, aunque no tengan pantalla.
 
-- Muestra en un mapa (OpenStreetMap + Leaflet) los autobuses que se dirigen a tus paradas, con su número de línea.
-- Se actualiza cada 30 segundos, 1 minuto o 2 minutos.
-- Lista de llegadas con línea, destino, minutos que faltan, distancia y estado (*Llegando*, *Cerca*, *En camino*).
-- Cada bus deja un rastro en el mapa para ver por dónde viene. Tocar una llegada centra el mapa en ese bus.
-- Arranca **en vivo** con dos paradas de ejemplo en Alcobendas. **Cerca de mí** carga las 3 paradas más cercanas a tu ubicación.
-- Hay un **modo demo** con autobuses simulados (Ajustes → Usar demo).
+👉 **https://bendi.dev/marquesina/**
 
-## Uso
+Funciona con los autobuses urbanos de **EMT Madrid** y con los del **Consorcio de Transportes**: interurbanos (151, 153, 158, 827…) y urbanos de otros municipios como **Alcobendas** y **San Sebastián de los Reyes**. No hace falta registrarse ni instalar nada.
 
-No hace falta registrarse ni configurar nada:
+---
 
-- **Cerca de mí** carga las 3 paradas más cercanas a tu ubicación, de EMT o del Consorcio.
-- **Buscar paradas**: toca el mapa y añade las paradas que quieras.
-- También puedes escribir los códigos en **Ajustes**: paradas de EMT (el número de la marquesina) y paradas del Consorcio (5 cifras).
+## Qué puedes hacer
 
-Los autobuses de EMT se consultan a través del proxy con las claves de la aplicación marquesina en Mobility Labs. Si prefieres usar tu propia cuenta de Mobility Labs, ponla en Ajustes; se guarda solo en tu navegador.
+- **Ver tus paradas en vivo.** Cada parada muestra las próximas llegadas, con línea, destino y minutos que faltan, y se actualiza sola cada 30 s, 1 min o 2 min.
+- **Seguir los buses en el mapa.** Los de EMT aparecen con su posición GPS y dejan un rastro para ver por dónde vienen. Si tocas una llegada en la lista, el mapa se centra en ese bus.
+- **Saber si el dato es fiable.** En el Consorcio, cada tiempo indica si es *En directo (GPS)* o *Según horario*.
+- **Encontrar paradas sin saber el código:**
+  - **Cerca de mí**: usa tu ubicación y carga las 3 paradas más cercanas.
+  - **Buscar paradas**: tocas el mapa y te muestra las paradas de alrededor con sus líneas, para añadirlas.
+- **Guardar tus paradas.** Se quedan en tu navegador y la próxima vez la web se abre con ellas.
+- **Usarla de día o de noche.** Tiene tema claro y oscuro según tu dispositivo, y está pensada primero para el móvil.
 
-## Alcobendas, Sanse e interurbanos (Consorcio de Transportes)
+## Cómo se usa
 
-Los autobuses que no son de EMT (interurbanos como el 151, 153, 158, 827 o los urbanos de Alcobendas y Sanse) salen de la API del Consorcio Regional de Transportes de Madrid. No necesita registro, pero no admite llamadas directas desde otras webs, así que la web pasa por un proxy (`worker.js`) desplegado en Cloudflare, que ya viene configurado: quien abra la web no tiene que poner nada.
+1. Abre **https://bendi.dev/marquesina/**. Arranca en vivo con dos paradas de ejemplo en Alcobendas.
+2. Pulsa **Cerca de mí**, o **Buscar paradas** y toca el mapa donde está tu parada.
+3. Listo. Para cambiar paradas o el intervalo de actualización, entra en **Ajustes**.
 
-- Da los **tiempos de llegada** por parada, en directo cuando el bus lleva GPS y según horario cuando no. No da la posición de los autobuses, así que en el mapa las llegadas aparecen junto a cada parada.
-- Para encontrar tus paradas, pulsa **Cerca de mí**, o **Buscar paradas** y toca el mapa para añadir las que quieras.
+En **Ajustes** también puedes escribir los códigos a mano:
 
-## Proxy (Cloudflare Workers)
+| Red | Código | Ejemplo |
+|---|---|---|
+| EMT Madrid | El número que aparece en la marquesina | `69`, `72` |
+| Consorcio (interurbanos, Alcobendas, Sanse…) | 5 cifras | `06756` |
 
-1. Crea una cuenta gratuita en Cloudflare → **Workers & Pages** → **Create** → **Worker** → **Deploy**.
-2. **Edit code**, pega el contenido de `worker.js` y pulsa **Deploy**.
-3. La web usa por defecto `https://marquesina.serbenda.workers.dev` (constante `PROXY` en `index.html`). Si despliegas otro worker, cambia esa constante o pon su URL en **Ajustes → Proxy**.
+> Consejo: en el móvil, añade la web a la pantalla de inicio para abrirla como una app.
 
-Si publicas la web en otro dominio, añádelo a `ALLOWED_ORIGINS` en `worker.js`.
+### Qué datos hay en cada zona
 
-## Publicar
+| | EMT Madrid | Consorcio |
+|---|---|---|
+| Tiempos de llegada | ✅ | ✅ |
+| Posición del bus en el mapa | ✅ | ❌ (las llegadas se muestran junto a la parada) |
+| Distancia hasta la parada | ✅ | ❌ |
+| Indica si el dato es GPS u horario | Siempre GPS | ✅ |
 
-Es una web estática: activa GitHub Pages sobre la rama `main` (carpeta raíz).
+## Cómo funciona
 
-## Datos
+```mermaid
+flowchart LR
+  U[Navegador<br/>index.html] -- "/emt/… y /crtm/…" --> W[Proxy en Cloudflare<br/>worker.js]
+  W -- "claves de la app (secretos)" --> EMT[(API EMT Madrid)]
+  W --> CRTM[(API Consorcio de Transportes)]
+  U -- "mapa" --> OSM[(OpenStreetMap)]
+  GH[GitHub · rama main] -- "GitHub Actions" --> P[GitHub Pages<br/>bendi.dev/marquesina]
+```
 
-- Autobuses: API de EMT Madrid (Mobility Labs) y API del Consorcio Regional de Transportes de Madrid.
-- Mapa: © colaboradores de OpenStreetMap.
+- **Web estática** (`index.html`): un solo archivo con HTML, CSS y JavaScript, sin compilación. El mapa usa [Leaflet](https://leafletjs.com/) y [OpenStreetMap](https://www.openstreetmap.org/).
+- **Proxy** (`worker.js`) en Cloudflare Workers, plan gratuito. Hace falta por dos motivos:
+  - La API del Consorcio no permite llamadas desde otras webs (CORS).
+  - Los datos de EMT requieren iniciar sesión. El proxy lo hace con las claves de la aplicación marquesina, guardadas como secretos, para que nadie tenga que registrarse.
+- **Sin servidor ni base de datos propios.** Las paradas de cada persona se guardan en su navegador (`localStorage`). No hay analítica ni cookies.
+
+Más detalle en [docs/ARQUITECTURA.md](docs/ARQUITECTURA.md).
+
+## Estructura del repositorio
+
+```
+marquesina/
+├── index.html                  Web completa (HTML + CSS + JS)
+├── worker.js                   Proxy para Cloudflare Workers
+├── assets/
+│   └── icono.png               Icono de la aplicación (registrado en Mobility Labs)
+├── docs/
+│   ├── ARQUITECTURA.md         Diseño, fuentes de datos y funcionamiento interno
+│   └── MANTENIMIENTO.md        Puesta en marcha y mantenimiento paso a paso
+├── .github/workflows/
+│   └── pages.yml               Publicación automática en GitHub Pages
+└── .nojekyll                   Sirve los archivos tal cual, sin Jekyll
+```
+
+## Desarrollo
+
+### Probar en local
+No hay dependencias ni compilación. Sirve la carpeta con cualquier servidor estático, por ejemplo:
+
+```bash
+python3 -m http.server 8000
+# abre http://localhost:8000
+```
+
+Para que las llamadas al proxy funcionen desde `localhost`, añade ese origen temporalmente a `ALLOWED_ORIGINS` en el worker, o prueba directamente en la web publicada.
+
+### Flujo de trabajo
+1. Trabajar siempre en la rama **`development`**. Nunca hacer commits directos a `main`.
+2. Abrir una **pull request** `development → main`.
+3. Al fusionarla, GitHub Actions publica la web automáticamente en 30–60 s.
+4. Si el cambio toca `worker.js`, **primero** hay que desplegar el worker en Cloudflare y **después** fusionar la PR. El worker no se publica solo.
+
+Los pasos detallados (Cloudflare, secretos, Mobility Labs, comprobaciones) están en [docs/MANTENIMIENTO.md](docs/MANTENIMIENTO.md).
 
 ## Documentación
 
-- [docs/ARQUITECTURA.md](docs/ARQUITECTURA.md): arquitectura, fuentes de datos y funcionamiento interno.
-- [docs/MANTENIMIENTO.md](docs/MANTENIMIENTO.md): puesta en marcha y mantenimiento paso a paso (Mobility Labs, Cloudflare, GitHub Pages) y solución de errores.
+| Documento | Para qué |
+|---|---|
+| [docs/ARQUITECTURA.md](docs/ARQUITECTURA.md) | Cómo está montado: piezas, APIs, datos guardados, proxy, seguridad |
+| [docs/MANTENIMIENTO.md](docs/MANTENIMIENTO.md) | Cómo ponerlo en marcha y mantenerlo: Mobility Labs, Cloudflare, GitHub Pages, comprobaciones y errores |
+
+## Limitaciones conocidas
+
+- La API del Consorcio no es pública ni está documentada oficialmente: puede cambiar sin aviso.
+- El Consorcio no publica la posición de los autobuses, solo los tiempos de llegada.
+- La etiqueta *En directo / Según horario* se deduce del formato de los datos. No es una indicación oficial.
+- **Cerca de mí** necesita permiso de ubicación del navegador.
+
+## Datos y créditos
+
+- Datos de autobuses: [EMT Madrid · Mobility Labs](https://mobilitylabs.emtmadrid.es/) y [Consorcio Regional de Transportes de Madrid](https://www.crtm.es/).
+- Mapa: © colaboradores de [OpenStreetMap](https://www.openstreetmap.org/copyright).
+- Mapa interactivo: [Leaflet](https://leafletjs.com/).
+
+Proyecto personal de [Sergio Santiago Bendaña Quesada](https://github.com/serbenda) · [bendi.dev](https://bendi.dev)
