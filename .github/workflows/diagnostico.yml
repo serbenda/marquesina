@@ -1,0 +1,17 @@
+name: Diagnóstico navegador 2
+on:
+  push:
+    branches: [diagnostico]
+jobs:
+  d:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          W=https://marquesina.serbenda.workers.dev
+          for i in 1 2 3; do
+            for u in "/crtm/stop/8_06756" "/crtm/stop/8_06758" "/crtm/GetNearestStopsByLocation.php?latitude=40.54&longitude=-3.64&mode=&method=1&precision=300" "/crtm/GetStopsTimes.php?codStop=8_06756&type=1&orderBy=2&stopTimesByIti=3"; do
+              curl -s -m 30 -H "Origin: https://bendi.dev" -o /tmp/b -D /tmp/h -w "%{http_code} %{time_total}s $u\n" "$W$u"; grep -i "access-control-allow-origin\|cf-cache" /tmp/h | tr -d '\r'; head -c 200 /tmp/b; echo
+            done
+            echo "== directo"; curl -s -m 20 -o /tmp/b -w "%{http_code} %{time_total}s\n" "https://www.crtm.es/widgets/api/GetStopsTimes.php?codStop=8_06756&type=1&orderBy=2&stopTimesByIti=3"; head -c 120 /tmp/b; echo
+            sleep 5
+          done
