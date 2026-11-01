@@ -14,7 +14,7 @@ Pasos concretos para montar desde cero, revisar o reparar los servicios externos
 | Panel de Cloudflare | https://dash.cloudflare.com |
 | Portal de EMT | https://mobilitylabs.emtmadrid.es |
 | Aplicación en EMT | `marquesina` (cuenta de serbenda) |
-| Secretos del worker | `EMT_CLIENT_ID`, `EMT_PASSKEY` |
+| Secretos del worker | `EMT_CLIENT_ID` y `EMT_PASSKEY` (aplicación); `EMT_EMAIL` y `EMT_PASSWORD` (cuenta, respaldo) |
 | Icono de la aplicación | [`assets/icono.png`](../assets/icono.png) (512×512) |
 
 ---
@@ -49,8 +49,14 @@ Al abrir la aplicación ya creada, el portal muestra:
 
 Cópialos directamente a Cloudflare (paso 2.4). No los guardes en ningún archivo del repo.
 
-### 1.4 Comprobar que la aplicación está activa
-Si el worker responde *"EMT rechazó el inicio de sesión (84…)"* (ver §5), revisa en el portal si la aplicación aparece como pendiente, en revisión o sin validar. Si es así, puede necesitar aprobación de EMT o un correo de activación.
+### 1.4 Aplicación no habilitada: código 84
+Con una aplicación recién registrada, EMT responde **código 84** al iniciar sesión con su X-ClientId y passKey, aunque estén bien copiados: la aplicación aún no está habilitada en el portal. Mientras tanto, la cuenta (email y contraseña) sí funciona.
+
+Por eso el worker admite dos formas de entrar y prueba en este orden:
+1. **Aplicación**: `EMT_CLIENT_ID` + `EMT_PASSKEY`.
+2. **Cuenta (respaldo)**: `EMT_EMAIL` + `EMT_PASSWORD`, con el email y la contraseña de Mobility Labs.
+
+Con las dos parejas configuradas, el worker funciona ya con la cuenta y pasará a usar la aplicación en cuanto EMT la habilite, sin tocar nada. Revisa de vez en cuando en el portal si la aplicación aparece como activa o pendiente; si no se habilita, se puede pedir a EMT desde el propio portal.
 
 ### 1.5 Regenerar las claves
 Hazlo si se filtran o si sospechas que hay un uso indebido:
@@ -88,6 +94,8 @@ Si el editor no deja escribir, cierra la pestaña y vuelve a entrar en **Edit co
 2. **Add** → tipo **Secret**:
    - Nombre `EMT_CLIENT_ID`, con el valor del **X-ClientId**.
    - Nombre `EMT_PASSKEY`, con el valor del **passKey**.
+   - Nombre `EMT_EMAIL`, con el email de la cuenta de Mobility Labs (respaldo, ver §1.4).
+   - Nombre `EMT_PASSWORD`, con la contraseña de esa cuenta (respaldo).
 3. Pega los valores sin espacios ni saltos de línea al principio o al final.
 4. **Deploy** para que el worker los use.
 
@@ -138,13 +146,14 @@ Desde el navegador la ruta de EMT puede mostrar el JSON aunque CORS lo bloquee p
 
 | Respuesta de `/emt/arrives/…` | Significado | Qué hacer |
 |---|---|---|
-| `Faltan los secretos EMT_CLIENT_ID y EMT_PASSKEY en el worker` | No están configurados, o se configuraron sin pulsar Deploy | Paso 2.4 |
-| `EMT rechazó el inicio de sesión (84: …)` | EMT no acepta las claves | Comprobar que no estén cruzadas (ClientId ↔ passKey), que no tengan espacios y que la aplicación esté activa (§1.4). Si sigue, regenerar las claves (§1.5) |
-| `EMT rechazó el inicio de sesión (80: …)` u otro código | Credenciales no válidas o cuenta bloqueada | Revisar la cuenta y la aplicación en Mobility Labs |
+| `Faltan los secretos de EMT en el worker…` | No hay ninguna pareja configurada, o se configuraron sin pulsar Deploy | Paso 2.4 |
+| `EMT rechazó el inicio de sesión (aplicación: código 84…)` sin línea de cuenta | La aplicación no está habilitada y no hay respaldo | Añadir `EMT_EMAIL` y `EMT_PASSWORD` (§1.4 y 2.4) |
+| `… aplicación: código 84; cuenta: código …` | Tampoco entra con la cuenta | Revisar email y contraseña (sin espacios), y que la cuenta esté activada desde el correo |
+| Otro código | Credenciales no válidas o cuenta bloqueada | Revisar la cuenta y la aplicación en Mobility Labs |
 | `"code":"90"` o similar con `data` vacío | La parada no existe o no tiene servicio ahora | Probar con otra parada (69 o 72, en Cibeles) |
 | 404 `Not found` | Ruta mal escrita, o el worker tiene código antiguo sin `/emt/` | Paso 2.3 con el `worker.js` actual |
 
-El worker devuelve el código y la descripción que da EMT, sin incluir nunca las claves.
+El worker devuelve el código que da EMT para cada forma de entrar, sin incluir nunca las claves ni la contraseña.
 
 ---
 

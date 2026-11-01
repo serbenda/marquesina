@@ -7,9 +7,11 @@
 //                            El worker inicia sesión en Mobility Labs con las claves de la
 //                            aplicación marquesina, así nadie tiene que registrarse.
 //
-// Secretos necesarios (Cloudflare > Worker > Settings > Variables and Secrets):
-//   EMT_CLIENT_ID  -> X-ClientId de la aplicación en Mobility Labs
-//   EMT_PASSKEY    -> passKey de la aplicación en Mobility Labs
+// Secretos (Cloudflare > Worker > Settings > Variables and Secrets), al menos una pareja:
+//   EMT_CLIENT_ID + EMT_PASSKEY   -> claves de la aplicación marquesina en Mobility Labs (preferido)
+//   EMT_EMAIL + EMT_PASSWORD      -> cuenta de Mobility Labs (respaldo: se usa si las claves de la
+//                                    aplicación no están o EMT las rechaza, p. ej. código 84 mientras
+//                                    la aplicación no está habilitada en el portal)
 //
 // Despliegue: Cloudflare > Worker marquesina > Edit code > pegar este archivo > Deploy.
 
@@ -37,16 +39,27 @@ let emtToken = null, emtTokenExp = 0;
 
 async function emtLogin(env, force = false) {
   if (!force && emtToken && Date.now() < emtTokenExp) return emtToken;
-  if (!env.EMT_CLIENT_ID || !env.EMT_PASSKEY) throw new Error("Faltan los secretos EMT_CLIENT_ID y EMT_PASSKEY en el worker");
-  const r = await fetch(`${EMT}/v2/mobilitylabs/user/login/`, {
-    headers: { "X-ClientId": env.EMT_CLIENT_ID, passKey: env.EMT_PASSKEY },
-  });
-  const j = await r.json();
-  const d = j.data && j.data[0];
-  if (!d || !d.accessToken) throw new Error(`EMT rechazó el inicio de sesión (${j.code || r.status}: ${j.description || j.message || JSON.stringify(j).slice(0, 200)})`);
-  emtToken = d.accessToken;
-  emtTokenExp = Date.now() + ((d.tokenSecExpiration || 3600) - 120) * 1000;
-  return emtToken;
+
+  // Formas de entrar, por orden de preferencia
+  const methods = [];
+  if (env.EMT_CLIENT_ID && env.EMT_PASSKEY) methods.push(["aplicación", { "X-ClientId": env.EMT_CLIENT_ID, passKey: env.EMT_PASSKEY }]);
+  if (env.EMT_EMAIL && env.EMT_PASSWORD)    methods.push(["cuenta", { email: env.EMT_EMAIL, password: env.EMT_PASSWORD }]);
+  if (!methods.length) throw new Error("Faltan los secretos de EMT en el worker (EMT_CLIENT_ID y EMT_PASSKEY, o EMT_EMAIL y EMT_PASSWORD)");
+
+  const errors = [];
+  for (const [name, headers] of methods) {
+    const r = await fetch(`${EMT}/v2/mobilitylabs/user/login/`, { headers });
+    let j = {};
+    try { j = await r.json(); } catch {}
+    const d = j.data && j.data[0];
+    if (d && d.accessToken) {
+      emtToken = d.accessToken;
+      emtTokenExp = Date.now() + ((d.tokenSecExpiration || 3600) - 120) * 1000;
+      return emtToken;
+    }
+    errors.push(`${name}: código ${j.code || r.status}${j.description ? " " + j.description : ""}`);
+  }
+  throw new Error(`EMT rechazó el inicio de sesión (${errors.join("; ")})`);
 }
 
 async function emtArrivals(stop, env) {
