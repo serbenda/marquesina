@@ -319,7 +319,10 @@ async function crtmArrivals(raw){
   const j = await getJson(`${PROXY}/crtm/stop/${code}`);
   const {buses} = parseCrtmTimes(j, code);
   const name = (j.stop && j.stop.name) || `Parada ${code.replace(/^\d+_/,"")}`;
-  return {id: code.replace(/^8_/,""), name, pos: j.stop && j.stop.pos, crtm: true, vehicles: j.vehicles || [], buses};
+  const out = {id: code.replace(/^8_/,""), name, pos: j.stop && j.stop.pos, crtm: true, vehicles: j.vehicles || [], buses};
+  // El worker devuelve los últimos datos buenos si el Consorcio falla: se marcan con su hora real
+  if (j.stale) return {...out, stale: true, at: Date.parse(j.stopTimes.actualDate) || Date.now()};
+  return out;
 }
 // Paradas cercanas: Consorcio (autobuses, Metro, Cercanías y parte de EMT) + EMT (todas sus paradas,
 // también las que el Consorcio no tiene, como El Pardo). Si una fuente falla, vale la otra.
@@ -380,7 +383,7 @@ function renderList(){
       </div>`;
     }).join("") || '<p class="empty">No hay autobuses previstos ahora mismo.</p>';
     const sub = [m.alias ? esc(s.name) : "", `${kindOf(s)} ${esc(String(s.id).replace(/^\d+_/,""))}`, m.walk ? `${m.walk} min andando` : ""].filter(Boolean).join(" · ")
-      + (s.stale ? `<span class="stale">Sin conexión · datos ${fmtAge(Date.now() - s.at)}</span>` : "");
+      + (s.stale ? `<span class="stale">Sin datos nuevos · son de ${fmtAge(Date.now() - s.at)}</span>` : "");
     const editBtn = `<button class="edit" data-edit="${esc(stopKey(s))}" data-name="${esc(s.name)}">Editar</button>`;
     return `<div class="stophead">${m.fav ? '<span class="star" aria-label="Favorita">★</span>' : ""}<span class="alias">${esc(m.alias || s.name)}</span>${cfg.alerts[stopKey(s)]?.on ? '<span class="bell" title="Aviso activado" aria-label="Aviso activado">🔔</span>' : ""}${editBtn}</div>
       <p class="stopsub">${sub}</p>${rows}`;
@@ -488,7 +491,7 @@ async function doRefresh(){
     // Si una parada falla, se mantienen sus últimos datos (hasta 15 min) marcados como antiguos
     const prev = new Map(last.filter(s=>!s.error).map(s=>[stopKey(s), s]));
     const settle = (r, key) => {
-      if (!r.error) return {...r, at: Date.now()};
+      if (!r.error) return {...r, at: r.at || Date.now()};
       const p = prev.get(key);
       return p && Date.now() - p.at < 15*60000 ? {...p, stale:true} : r;
     };

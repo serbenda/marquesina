@@ -69,7 +69,7 @@ export function mergeStops(...lists) {
 
 // ---------- Formato ----------
 export function fmtEta(s) {
-  if (s >= 999999) return { txt: "+20", unit: "min" };
+  if (s >= 999000) return { txt: "+20", unit: "min" };
   if (s < 60) return { txt: "<1", unit: "min" };
   return { txt: String(Math.floor(s / 60)), unit: "min" };
 }
@@ -143,7 +143,8 @@ export function parseCrtmVehicles(j, fallback) {
 export function groupByLine(buses, elapsed = 0) {
   const groups = new Map();
   for (const b of buses.slice().sort((x, y) => x.eta - y.eta)) {
-    const eta = Math.max(0, b.eta - elapsed);
+    // EMT manda 999999 cuando el bus está a más de 20 min: se deja tal cual (se muestra "+20")
+    const eta = b.eta >= 999000 ? 999999 : Math.max(0, b.eta - elapsed);
     const k = `${b.line}|${b.dest}`;
     if (!groups.has(k)) groups.set(k, { line: b.line, mode: b.mode, dest: b.dest, items: [] });
     groups.get(k).items.push({ ...b, eta });

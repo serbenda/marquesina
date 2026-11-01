@@ -198,3 +198,9 @@ test("parseEmtNear lee las paradas cercanas de EMT y mergeStops evita duplicados
   assert.equal(all[0].name, "El Pardo-Av. de la Guardia");
   assert.deepEqual(parseEmtNear({ code: "80" }), []);
 });
+
+test("EMT 999999 (más de 20 min) se muestra como +20 y no se descuenta", () => {
+  const g = groupByLine([{ key: "a", line: "179", dest: "El Pardo", eta: 600 }, { key: "b", line: "179", dest: "El Pardo", eta: 999999 }], 100);
+  assert.deepEqual(g[0].items.map(i => i.eta), [500, 999999]);
+  assert.equal(fmtEta(g[0].items[1].eta).txt, "+20");
+});

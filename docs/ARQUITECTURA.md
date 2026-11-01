@@ -149,6 +149,12 @@ Teselas de OpenStreetMap (`tile.openstreetmap.org`) con atribución. Para un uso
 - **Caché de 10 s:** EMT y el Consorcio refrescan las posiciones cada 15–30 s, así que consultar más a menudo no da datos nuevos; con 10 s, varias personas mirando la misma parada generan una sola consulta a la fuente.
 - **Límites del plan gratuito de Cloudflare:** 100.000 peticiones al día. Cada persona con la web abierta y a la vista hace 1 petición por parada cada 15 s (240 por parada y hora). Con la app en segundo plano no hace ninguna. El cron de los avisos suma 1.440 al día.
 
+### Fallos del Consorcio
+El Consorcio responde a veces con error (502/500, o una página HTML en lugar de JSON) cuando le llegan muchas peticiones a la vez, por ejemplo al abrir la web con varias paradas. El worker lo amortigua:
+- **Reintento:** `crtmFetch()` repite una vez tras 400 ms si la respuesta no es JSON válido.
+- **Últimos datos buenos:** `/crtm/stop` guarda la última respuesta correcta de cada parada 15 min (Cache API). Si el Consorcio sigue fallando, la devuelve con `stale: true` y la web la muestra con su hora real (*Sin datos nuevos · son de hace N min*).
+- **Menos ráfagas:** la posición de las líneas se pide de 3 en 3 (`pool()`), no todas a la vez.
+
 ### 5.1 Avisos programados (Web Push)
 
 **Flujo**

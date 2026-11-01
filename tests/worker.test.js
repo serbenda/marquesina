@@ -223,3 +223,44 @@ test("/emt/near guarda en caché la respuesta 'sin paradas' (código 01) sin rei
   assert.equal((await res.json()).code, "01");
   assert.ok(logins <= 1, "no fuerza un segundo inicio de sesión");
 });
+
+test("Consorcio con errores: reintenta y, si sigue fallando, devuelve los últimos datos buenos", async (t) => {
+  const times = JSON.parse(readFileSync(new URL("./fixtures/crtm-stoptimes-06756.json", import.meta.url), "utf8"));
+  for (const x of times.stopTimes.times.Time) x.line.codMode = "4";   // sin posiciones, para aislar los tiempos
+  // Caché simulada (Cache API de Cloudflare)
+  const store = new Map();
+  const prevCaches = globalThis.caches;
+  globalThis.caches = { default: { match: async k => store.has(k.url) ? new Response(store.get(k.url)) : undefined, put: async (k, r) => store.set(k.url, await r.text()) } };
+  t.after(() => { globalThis.caches = prevCaches; });
+  let mode = "ok", calls = 0;
+  t.mock.method(globalThis, "fetch", async (url) => {
+    url = String(url);
+    if (url.includes("GetStops.php")) return Response.json({ stops: { Stop: { name: "X" } } });
+    if (url.includes("GetStopsTimes")) {
+      calls++;
+      if (mode === "flaky" && calls % 2 === 1) return new Response("<html>502</html>", { status: 502 });
+      if (mode === "down") return new Response("<html>502</html>", { status: 502 });
+      return Response.json(times);
+    }
+    throw new Error("URL inesperada " + url);
+  });
+  const get = () => worker.default.fetch(new Request("https://w/crtm/stop/8_07777"), {}, {});
+  // 1. Funciona y guarda los datos buenos
+  assert.equal((await get()).status, 200);
+  // 2. Falla una vez: el reintento lo arregla
+  mode = "flaky"; calls = 0;
+  const r2 = await get();
+  assert.equal(r2.status, 200);
+  assert.equal((await r2.json()).stale, undefined);
+  assert.equal(calls, 2);
+  // 3. Caído: devuelve los últimos datos buenos marcados como antiguos
+  mode = "down";
+  const r3 = await get();
+  assert.equal(r3.status, 200);
+  const j3 = await r3.json();
+  assert.equal(j3.stale, true);
+  assert.equal(j3.stopTimes.times.Time.length, 6);
+  // 4. Caído y sin datos guardados de esa parada: error claro
+  const r4 = await worker.default.fetch(new Request("https://w/crtm/stop/8_08888"), {}, {});
+  assert.equal(r4.status, 502);
+});
