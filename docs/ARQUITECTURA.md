@@ -47,12 +47,18 @@ flowchart LR
 ### 3.2 Consorcio Regional de Transportes de Madrid (CRTM)
 
 - **Qué cubre:** interurbanos (151, 153, 158, 827…) y urbanos de otros municipios (Alcobendas, San Sebastián de los Reyes…). Sus paradas tienen código `8_XXXXX`; en la web se escriben solo las 5 cifras.
-- **Qué da:** tiempo de llegada por parada. **No da la posición de los autobuses**, así que en el mapa las llegadas se muestran como etiqueta junto a la parada.
+- **Qué da:** tiempo de llegada por parada y **posición GPS de los autobuses** de cada línea (`GetLineLocation`). En el mapa los buses aparecen como en EMT y la parada lleva además una etiqueta con las 3 próximas llegadas.
 - **Acceso:** sin registro, pero **no admite CORS**: el navegador no puede llamarla desde otra web. Por eso pasa por el worker.
 - **Llamadas** (siempre vía `https://marquesina.serbenda.workers.dev/crtm/...`):
   - `GetStops.php?codStop=8_06756`: nombre y coordenadas de la parada. Se guarda en caché en memoria mientras la página está abierta.
   - `GetStopsTimes.php?codStop=8_06756&type=1&orderBy=2&stopTimesByIti=3`: próximas llegadas (`stopTimes.times.Time[]`, con `line.shortDescription`, `destination`, `time` en ISO y `codIssue`).
   - `GetNearestStopsByLocation.php?latitude=..&longitude=..&mode=&method=1&precision=350`: paradas cercanas a un punto. Lo usan los botones **Buscar paradas** (punto tocado en el mapa) y **Cerca de mí** (ubicación del navegador; se quedan las 3 más cercanas).
+- **Posición de los autobuses** (por cada parada del Consorcio, en cada actualización):
+  1. Con las líneas y sentidos que salen en `GetStopsTimes`, se pide una vez por línea `GetLinesInformation.php?activeItinerary=1&codLine=<línea>`, que da los itinerarios con su sentido y sus paradas. Se guarda en memoria mientras la página está abierta.
+  2. Se elige el itinerario que contiene la parada y tiene ese sentido.
+  3. `GetLineLocation.php?mode=<codMode>&codItinerary=<itinerario>&codLine=<línea>&codStop=<parada>&direction=<sentido>` devuelve `vehiclesLocation.VehicleLocation[]` con `codVehicle` (matrícula), `coordinates` y `service`. `mode` es `8` para interurbanos y `9` para urbanos de otros municipios.
+  - Las llegadas no indican qué vehículo es, así que la lista y los buses del mapa no se enlazan uno a uno. Al tocar una fila, se centra el bus de esa línea más cercano a la parada.
+  - Si falla la posición de una línea, se ignora y siguen valiendo los tiempos.
 - **Búsqueda de paradas:** `GetNearestStopsByLocation` también devuelve paradas de EMT con prefijo `6_` (el número que sigue es el código de parada de EMT). La web usa esta llamada para encontrar paradas de las dos redes: `6_` va a la lista de EMT y `8_` a la del Consorcio.
 - **Peculiaridades:**
   - Cuando solo hay un elemento, la API devuelve un objeto en vez de una lista. Por eso existe `asArray()`.
