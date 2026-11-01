@@ -138,8 +138,9 @@ await scenario("3 · Enlace compartido: añade las paradas y limpia la direcció
     const cfg = await page.evaluate(() => JSON.parse(localStorage.getItem("marquesina")));
     check(cfg.stops === "69" && cfg.crtm === "06756", `paradas guardadas inesperadas: ${JSON.stringify({ stops: cfg.stops, crtm: cfg.crtm })}`);
     await waitLive(page);
-    const heads = await page.locator("#list .stophead").count();
-    check(heads === 2, `se esperaban 2 paradas en la lista y hay ${heads}`);
+    // Cada parada se pinta en cuanto llega: hay que esperar a las dos
+    await page.waitForFunction(() => document.querySelectorAll("#list .stophead").length === 2, null, { timeout: 30000 })
+      .catch(async () => { throw new Error(`se esperaban 2 paradas en la lista y hay ${await page.locator("#list .stophead").count()}: ${(await page.locator("#list").innerText()).slice(0, 200)}`); });
   } catch (e) { await shot(page, "3-enlace"); throw e; } finally { await context.close(); }
 });
 
