@@ -281,3 +281,24 @@ test("/crtm/Get… funciona con y sin \".php\" (el repetidor de Deno rechaza las
   }
   assert.equal(calls.length, 2);
 });
+
+test("la búsqueda de paradas del Consorcio se guarda 1 día y la segunda vez no se le pregunta", async (t) => {
+  const store = new Map();
+  const prevCaches = globalThis.caches;
+  globalThis.caches = { default: { match: async k => store.has(k.url) ? new Response(store.get(k.url)) : undefined, put: async (k, r) => store.set(k.url, await r.text()) } };
+  t.after(() => { globalThis.caches = prevCaches; });
+  let calls = 0;
+  t.mock.method(globalThis, "fetch", async () => { calls++; return new Response('{"stops":{"Stop":[{"codStop":"8_06756"}]}}'); });
+  const url = "https://w/crtm/GetNearestStopsByLocation?latitude=40.540&longitude=-3.640&mode=&method=1&precision=700";
+  for (let i = 0; i < 2; i++) {
+    const res = await worker.default.fetch(new Request(url, { headers: { Origin: "https://bendi.dev" } }), {}, {});
+    assert.equal(res.status, 200);
+    assert.match(await res.text(), /8_06756/);
+    assert.equal(res.headers.get("Cache-Control"), "max-age=3600");
+  }
+  assert.equal(calls, 1);
+  // Los tiempos de llegada NO se guardan así: cada vez se preguntan
+  await worker.default.fetch(new Request("https://w/crtm/GetStopsTimes?codStop=8_06756"), {}, {});
+  await worker.default.fetch(new Request("https://w/crtm/GetStopsTimes?codStop=8_06756"), {}, {});
+  assert.equal(calls, 3);
+});

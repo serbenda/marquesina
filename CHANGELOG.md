@@ -4,6 +4,7 @@ Lo más reciente, arriba. Cada entrada dice qué cambia para quien usa la web y 
 
 ## Sin publicar
 
+- **Búsqueda de paradas más fiable y rápida:** el worker guarda 1 día las búsquedas del Consorcio (tardaban 4–10 s y a veces fallaban) y la web les da más margen.
 - **Arreglado:** con el repetidor, *Zona*, *Buscar paradas* y *Cerca de mí* casi no encontraban paradas (Deno Deploy rechaza las rutas `.php`). La web las pide sin `.php`; nuevo chequeo real de la búsqueda por Deno.
 - **Documentación de ingeniería:** historia completa del proyecto ([docs/HISTORIA.md](docs/HISTORIA.md)), operación del servicio ([docs/OPERACIONES.md](docs/OPERACIONES.md)) y arquitectura de seguridad ([docs/SEGURIDAD.md](docs/SEGURIDAD.md)); el repetidor, integrado en la guía, la arquitectura y la referencia.
 - **Seguridad:** Leaflet se carga con huella SRI (`sw.js` → `marquesina-v5`).

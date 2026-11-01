@@ -125,7 +125,7 @@ flowchart LR
 | Worker / avisos | Llenar el almacenamiento con suscripciones falsas | D | Baja | Medio | Máximo 1000 suscripciones y 10 avisos; validación de cada campo | 🟢 Bajo |
 | Worker / avisos | Usar `/push/test` para enviar peticiones a cualquier URL | T (SSRF) | Baja | Medio | `isPushEndpoint`: solo Google, Mozilla, Apple y Microsoft por HTTPS | 🟢 Bajo |
 | Worker / avisos | Borrar la suscripción de otra persona | T | Muy baja | Bajo | Hace falta conocer su endpoint exacto (secreto de su navegador) | 🟢 Bajo |
-| Repetidor | Usarlo como proxy abierto | T/E | Media | Medio | Solo `/crtm/`, `/emt/`, `/push/` hacia 2 destinos fijos; 16 KB; 9 s | 🟢 Bajo |
+| Repetidor | Usarlo como proxy abierto | T/E | Media | Medio | Solo `/crtm/`, `/emt/`, `/push/` hacia 2 destinos fijos; 16 KB; 24 s | 🟢 Bajo |
 | Web | XSS con nombres de parada o líneas | T/E | Baja | Medio | Todo texto externo pasa por `esc()` | 🟢 Bajo |
 | Web | Leaflet manipulado en el CDN | T | Muy baja | Alto | **SRI** en el CSS y el JS de Leaflet | 🟢 Bajo |
 | Web | Fuentes de Google manipuladas | T | Muy baja | Bajo | Solo CSS y fuentes, no código | 🟢 Bajo |
@@ -149,7 +149,7 @@ flowchart TB
   subgraph C2["Capa 2 · Entrada al servidor"]
     B1["CORS limitado"]
     B2["Rutas cerradas (regex)"]
-    B3["Repetidor: 3 prefijos, 16 KB, 9 s"]
+    B3["Repetidor: 3 prefijos, 16 KB, 24 s"]
   end
   subgraph C3["Capa 3 · Lógica del worker"]
     D1["cleanAlerts: recorta y valida"]

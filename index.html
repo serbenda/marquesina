@@ -388,11 +388,14 @@ async function crtmArrivals(raw){
 }
 // Paradas cercanas: Consorcio (autobuses, Metro, Cercanías y parte de EMT) + EMT (todas sus paradas,
 // también las que el Consorcio no tiene, como El Pardo). Si una fuente falla, vale la otra.
+// La búsqueda del Consorcio tarda 4-10 s: se redondea el punto (~100 m) y el radio (50 m) para que el
+// worker pueda reutilizar búsquedas recientes (las guarda 1 día), y se le da más margen que al refresco.
 async function crtmNearest(lat, lng, radius = 350){
   const base = PROXY;
+  const la = lat.toFixed(3), lo = lng.toFixed(3), r = Math.max(100, Math.round(radius / 50) * 50);
   const [crtm, emt] = await Promise.allSettled([
-    getJson(crtmUrl(`GetNearestStopsByLocation?latitude=${lat.toFixed(5)}&longitude=${lng.toFixed(5)}&mode=&method=1&precision=${Math.round(radius)}`)).then(parseNearest),
-    getJson(`${base}/emt/near/${lat.toFixed(5)}/${lng.toFixed(5)}/${Math.round(radius)}`).then(parseEmtNear),
+    getJson(crtmUrl(`GetNearestStopsByLocation?latitude=${la}&longitude=${lo}&mode=&method=1&precision=${r}`), 25000).then(parseNearest),
+    getJson(`${base}/emt/near/${la}/${lo}/${r}`, 25000).then(parseEmtNear),
   ]);
   if (crtm.status === "rejected" && emt.status === "rejected") throw new Error("Sin datos de paradas");
   return mergeStops(emt.value || [], crtm.value || []);

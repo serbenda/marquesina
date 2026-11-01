@@ -589,6 +589,7 @@ flowchart LR
 | Paradas de EMT cercanas | Cache API | 1 día | `cache.marquesina/emt-near/<lat>/<lon>/<r>` |
 | Últimos datos buenos del Consorcio | Cache API | 15 min | `cache.marquesina/crtm-last/<código>` |
 | Respuestas del Consorcio | `fetch` con `cf.cacheTtl` | 10 s (GetStops y recorridos: 1 día) | URL |
+| Búsquedas de paradas, paradas y líneas del Consorcio (`/crtm/GetNearestStopsByLocation`, `GetStops`, `GetLinesInformation`) | Cache API | 1 día | `cache.marquesina/crtm/<nombre>?<consulta>` |
 | Token de EMT | Memoria | Hasta 2 min antes de caducar | — |
 | Recorridos de cada línea | Memoria | Mientras viva la instancia | `codLine` |
 | Posiciones de los buses | Memoria | 1 min | código de parada |
@@ -626,7 +627,7 @@ flowchart TB
 
 | Detalle | Valor | Por qué |
 |---|---|---|
-| Plazo total | 9 s, compartido entre las dos direcciones | La web espera 10 s por petición |
+| Plazo total | 24 s, compartido entre las dos direcciones | La búsqueda de paradas del Consorcio puede tardar 10 s o más; la web le da 25 s |
 | Rutas | `/crtm/`, `/emt/`, `/push/` y `/` | No ser un proxy abierto |
 | Métodos | GET, POST, OPTIONS | Los que usa la web |
 | Cuerpo máximo | 16 KB | Una suscripción con 10 avisos ocupa ~2 KB |
@@ -900,7 +901,9 @@ flowchart TB
 | Chequeo | minuto 17 de cada hora | `healthcheck.yml` | Vigilancia |
 | Plan gratuito de Workers | 100.000 peticiones al día | Cloudflare | Límite de uso |
 | `pickProxy` | 4 s por camino (los tres a la vez) + 0,5 s de preferencia por `api.bendi.dev` | `index.html` | Elección del camino al abrir |
-| Plazo del repetidor | 9 s | `relay/relay.js` | Tiempo total para llegar al worker |
+| Plazo del repetidor | 24 s | `relay/relay.js` | Tiempo total para llegar al worker |
+| Espera de la búsqueda de paradas | 25 s | `index.html` (`crtmNearest`) | La búsqueda del Consorcio es lenta (4–10 s) |
+| Búsquedas, paradas y líneas del Consorcio guardadas | 1 día | `worker.js` | Las paradas casi no cambian |
 | Cuerpo máximo del repetidor | 16 KB | `relay/relay.js` | Tamaño de los POST de avisos |
 
 ---
