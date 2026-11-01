@@ -11,12 +11,15 @@ Mapa en tiempo real de los autobuses que llegan a tus paradas (EMT Madrid, y tam
 - Arranca **en vivo** con dos paradas de ejemplo en Alcobendas. **Cerca de mí** carga las 3 paradas más cercanas a tu ubicación.
 - Hay un **modo demo** con autobuses simulados (Ajustes → Usar demo).
 
-## Uso con datos reales
+## Uso
 
-1. Regístrate gratis en [Mobility Labs](https://mobilitylabs.emtmadrid.es/) (EMT Madrid) y activa la cuenta desde el correo.
-2. Abre la web, pulsa **Ajustes** y escribe tu email, tu contraseña y los números de tus paradas (aparecen en la marquesina de cada parada), separados por comas.
+No hace falta registrarse ni configurar nada:
 
-Las credenciales se guardan solo en el `localStorage` de tu navegador.
+- **Cerca de mí** carga las 3 paradas más cercanas a tu ubicación, de EMT o del Consorcio.
+- **Buscar paradas**: toca el mapa y añade las paradas que quieras.
+- También puedes escribir los códigos en **Ajustes**: paradas de EMT (el número de la marquesina) y paradas del Consorcio (5 cifras).
+
+Los autobuses de EMT se consultan a través del proxy con las claves de la aplicación marquesina en Mobility Labs. Si prefieres usar tu propia cuenta de Mobility Labs, ponla en Ajustes; se guarda solo en tu navegador.
 
 ## Alcobendas, Sanse e interurbanos (Consorcio de Transportes)
 

@@ -14,8 +14,8 @@ Una web estática que muestra en un mapa los autobuses que van a llegar a las pa
 
 ```mermaid
 flowchart LR
-  U[Navegador del usuario<br/>index.html] -- "EMT: llamada directa" --> EMT[(API EMT Madrid<br/>openapi.emtmadrid.es)]
-  U -- "/crtm/..." --> W[Cloudflare Worker<br/>worker.js]
+  U[Navegador del usuario<br/>index.html] -- "/emt/... y /crtm/..." --> W[Cloudflare Worker<br/>worker.js]
+  W -- "claves de la app<br/>(secretos)" --> EMT[(API EMT Madrid<br/>openapi.emtmadrid.es)]
   W --> CRTM[(API Consorcio<br/>crtm.es/widgets/api)]
   U -- "teselas del mapa" --> OSM[(OpenStreetMap)]
   GH[GitHub repo<br/>rama main] -- "GitHub Actions" --> P[GitHub Pages<br/>bendi.dev/marquesina]
@@ -37,9 +37,10 @@ flowchart LR
 
 - **Qué cubre:** autobuses urbanos de la ciudad de Madrid.
 - **Qué da:** tiempo de llegada, distancia **y posición GPS** de cada bus. Es lo que permite pintar buses moviéndose en el mapa.
-- **Acceso:** cuenta gratuita en [Mobility Labs](https://mobilitylabs.emtmadrid.es/). Cada usuario pone su email y contraseña en Ajustes, y se guardan en su `localStorage`.
-- **Llamadas** (directas desde el navegador; EMT admite CORS):
-  - `GET /v2/mobilitylabs/user/login/`, con cabeceras `email` y `password`. Devuelve `accessToken` y `tokenSecExpiration`. El token se reutiliza hasta un minuto antes de que caduque.
+- **Acceso:** la aplicación `marquesina` está registrada en [Mobility Labs](https://mobilitylabs.emtmadrid.es/) con la cuenta de serbenda. Sus claves (**X-ClientId** y **passKey**) están guardadas como secretos del worker (`EMT_CLIENT_ID`, `EMT_PASSKEY`). El worker inicia sesión y consulta EMT, así que **los usuarios no necesitan registrarse**.
+- **Cuenta propia (opcional):** si alguien pone su email y contraseña de Mobility Labs en Ajustes, la web consulta EMT directamente con su usuario (EMT admite CORS) y no pasa por el worker.
+- **Llamadas:**
+  - `GET /v2/mobilitylabs/user/login/`, con cabeceras `X-ClientId` y `passKey` (worker) o `email` y `password` (cuenta propia). Devuelve `accessToken` y `tokenSecExpiration`. El token se reutiliza hasta poco antes de que caduque; si EMT lo rechaza, el worker lo renueva y reintenta una vez.
   - `POST /v2/transport/busemtmad/stops/{parada}/arrives/`, con cabecera `accessToken`. Devuelve la parada (`StopInfo`) y las llegadas (`Arrive[]`: `line`, `destination`, `estimateArrive` en segundos, `DistanceBus` en metros, `geometry.coordinates` como [lon, lat]).
 
 ### 3.2 Consorcio Regional de Transportes de Madrid (CRTM)
@@ -51,6 +52,7 @@ flowchart LR
   - `GetStops.php?codStop=8_06756`: nombre y coordenadas de la parada. Se guarda en caché en memoria mientras la página está abierta.
   - `GetStopsTimes.php?codStop=8_06756&type=1&orderBy=2&stopTimesByIti=3`: próximas llegadas (`stopTimes.times.Time[]`, con `line.shortDescription`, `destination`, `time` en ISO y `codIssue`).
   - `GetNearestStopsByLocation.php?latitude=..&longitude=..&mode=&method=1&precision=350`: paradas cercanas a un punto. Lo usan los botones **Buscar paradas** (punto tocado en el mapa) y **Cerca de mí** (ubicación del navegador; se quedan las 3 más cercanas).
+- **Búsqueda de paradas:** `GetNearestStopsByLocation` también devuelve paradas de EMT con prefijo `6_` (el número que sigue es el código de parada de EMT). La web usa esta llamada para encontrar paradas de las dos redes: `6_` va a la lista de EMT y `8_` a la del Consorcio.
 - **Peculiaridades:**
   - Cuando solo hay un elemento, la API devuelve un objeto en vez de una lista. Por eso existe `asArray()`.
   - El tiempo restante se calcula como `time − actualDate`, ambos dados por la API, para no depender del reloj del usuario.
@@ -66,7 +68,7 @@ Teselas de OpenStreetMap (`tile.openstreetmap.org`) con atribución. Para un uso
 
 1. **Arranque:** lee los ajustes de `localStorage` (clave `marquesina`) y los combina con los valores por defecto (`DEF`). Si no hay proxy guardado, usa `PROXY`.
 2. **Modo:**
-   - *En vivo*, si hay credenciales de EMT o paradas del Consorcio. Sin ajustes guardados se usan las paradas de ejemplo `06756, 06758` (Alcobendas, constante `DEF.crtm`), así la web arranca en vivo para cualquiera.
+   - *En vivo*, si hay paradas de EMT o del Consorcio. Sin ajustes guardados se usan las paradas de ejemplo `06756, 06758` (Alcobendas, constante `DEF.crtm`), así la web arranca en vivo para cualquiera.
    - *Demo*, solo si el usuario la elige (Ajustes → Usar demo, campo `demo: true`): buses simulados que se acercan a Cibeles.
 3. **Ciclo:** `setInterval(tick, 1000)`.
    - Cada segundo se actualizan la cuenta atrás del anillo y los minutos de la lista (restando el tiempo transcurrido desde la última consulta, sin volver a llamar a la API).
@@ -80,7 +82,7 @@ Teselas de OpenStreetMap (`tile.openstreetmap.org`) con atribución. Para un uso
 | Campo | Significado |
 |---|---|
 | `stops` | Paradas EMT, separadas por comas |
-| `email`, `pass` | Credenciales de Mobility Labs (solo en ese navegador) |
+| `email`, `pass` | Cuenta propia de Mobility Labs, opcional (solo en ese navegador) |
 | `crtm` | Paradas del Consorcio (5 cifras) |
 | `proxy` | URL del worker. Vacío en el formulario = usar `PROXY` |
 | `base` | URL de la API de EMT |
@@ -90,9 +92,11 @@ Teselas de OpenStreetMap (`tile.openstreetmap.org`) con atribución. Para un uso
 ## 5. El proxy (`worker.js`)
 
 - `/crtm/<Archivo>.php?...` → `https://www.crtm.es/widgets/api/<Archivo>.php?...`. Solo deja pasar nombres que encajan con `Get*.php`, así no se puede usar como proxy abierto. Cloudflare cachea 20 s, de modo que varios usuarios mirando la misma parada generan una sola llamada al Consorcio.
-- `/v2/...` → API de EMT. Hoy no hace falta porque EMT admite CORS, pero se deja por si eso cambia.
+- `/emt/arrives/<parada>` → inicia sesión en EMT con los secretos `EMT_CLIENT_ID` y `EMT_PASSKEY` y devuelve las llegadas de la parada (mismo JSON que EMT). Guarda la respuesta 20 s en la caché de Cloudflare (`caches.default`), así varios usuarios mirando la misma parada generan una sola consulta.
+- `/v2/...` → paso directo a la API de EMT, por si EMT quitara el CORS a quien usa su propia cuenta.
 - **CORS:** responde con `Access-Control-Allow-Origin` solo para los orígenes de `ALLOWED_ORIGINS` (`https://bendi.dev`, `https://serbenda.github.io`).
-- **No guarda ni registra credenciales.**
+- **Secretos:** `EMT_CLIENT_ID` y `EMT_PASSKEY` se configuran en Cloudflare → Worker `marquesina` → Settings → Variables and Secrets (tipo *Secret*). No están en el repo. Para cambiarlos (por ejemplo, si se regeneran en Mobility Labs), se editan ahí y se pulsa Deploy.
+- **No guarda ni registra las credenciales de los usuarios.**
 - **Límites del plan gratuito de Cloudflare:** 100.000 peticiones al día. Cada usuario con la web abierta hace unas 2 peticiones por parada y minuto (tiempos más, la primera vez, datos de la parada).
 
 ## 6. Despliegue
@@ -121,7 +125,8 @@ Mejora posible: desplegarlo desde GitHub Actions con `wrangler` y un token de Cl
 | El workflow no arranca | Pages no está en "GitHub Actions" o Actions desactivadas | Settings → Pages / Settings → Actions → General |
 | "No se pudo conectar con el Consorcio…" | Worker caído, URL mal o origen no permitido | Abrir la URL de prueba del §6; si la web está en un dominio nuevo, añadirlo a `ALLOWED_ORIGINS` y volver a desplegar |
 | Paradas del Consorcio sin datos o datos raros | El Consorcio cambió su API | Abrir `GetStopsTimes.php` en el navegador, ver el JSON nuevo y ajustar `crtmArrivals()` |
-| "No se pudo iniciar sesión en Mobility Labs" | Credenciales mal o cuenta sin activar | Revisar en mobilitylabs.emtmadrid.es |
+| Paradas de EMT con "EMT rechazó el inicio de sesión" o "Faltan los secretos…" | Secretos del worker sin poner, mal copiados o claves revocadas | Revisar `EMT_CLIENT_ID` y `EMT_PASSKEY` en Cloudflare y la aplicación en Mobility Labs |
+| "No se pudo iniciar sesión en Mobility Labs" | Cuenta propia: credenciales mal o cuenta sin activar | Revisar en mobilitylabs.emtmadrid.es o borrar email y contraseña en Ajustes para usar el worker |
 | Error de conexión con EMT | EMT ha quitado CORS | Poner en Ajustes → URL de la API de EMT la URL del worker (ya tiene la ruta `/v2/`) |
 | Worker devuelve 429 o deja de responder | Límite diario del plan gratuito | Ver métricas en Cloudflare; subir `cacheTtl` o el intervalo por defecto |
 | Todos los tiempos salen "Según horario" | El Consorcio cambió el formato de `codIssue` | Revisar la regla `live` en `crtmArrivals()` |
@@ -133,10 +138,11 @@ Mejora posible: desplegarlo desde GitHub Actions con `wrangler` y un token de Cl
 
 ## 8. Seguridad y privacidad
 
-- Las credenciales de EMT se quedan en el navegador de cada usuario y solo viajan a EMT (o al worker, si se configura como API de EMT). **No se suben al repo.**
+- Las claves de la aplicación de EMT viven solo como secretos del worker. **Nunca deben aparecer en `index.html` ni en el repo.**
+- Si un usuario pone su propia cuenta de EMT, se queda en su navegador y solo viaja a EMT.
+- Todas las consultas de EMT sin cuenta propia se hacen con la aplicación `marquesina`. Si hubiera abuso, se pueden regenerar las claves en Mobility Labs y actualizar los secretos.
 - El worker solo reenvía las consultas de paradas y tiempos del Consorcio y responde a los orígenes permitidos.
 - La web no tiene analítica ni cookies propias.
-- Si alguna vez se quiere que los autobuses de EMT funcionen sin que cada usuario se registre, las credenciales tendrían que vivir como **secreto del worker** (`wrangler secret put`), nunca en `index.html`.
 
 ## 9. Ideas pendientes
 
@@ -144,4 +150,3 @@ Mejora posible: desplegarlo desde GitHub Actions con `wrangler` y un token de Cl
 - Convertir la web en PWA (instalable y con icono).
 - Paradas compartibles por enlace.
 - Despliegue automático del worker desde GitHub Actions.
-- Credenciales de EMT en el worker para que funcione sin registro.
