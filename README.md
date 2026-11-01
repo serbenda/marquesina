@@ -19,7 +19,7 @@ Las credenciales se guardan solo en el `localStorage` de tu navegador.
 
 ## Alcobendas, Sanse e interurbanos (Consorcio de Transportes)
 
-Los autobuses que no son de EMT (interurbanos como el 151, 153, 158, 827 o los urbanos de Alcobendas y Sanse) salen de la API del Consorcio Regional de Transportes de Madrid. No necesita registro, pero no admite llamadas directas desde otras webs, así que hay que pasar por el proxy (`worker.js`).
+Los autobuses que no son de EMT (interurbanos como el 151, 153, 158, 827 o los urbanos de Alcobendas y Sanse) salen de la API del Consorcio Regional de Transportes de Madrid. No necesita registro, pero no admite llamadas directas desde otras webs, así que la web pasa por un proxy (`worker.js`) desplegado en Cloudflare, que ya viene configurado: quien abra la web no tiene que poner nada.
 
 - Da los **tiempos de llegada** por parada, en directo cuando el bus lleva GPS y según horario cuando no. No da la posición de los autobuses, así que en el mapa las llegadas aparecen junto a cada parada.
 - Para encontrar tus paradas, pulsa **Buscar paradas**, toca el mapa y añade las que quieras.
@@ -28,7 +28,7 @@ Los autobuses que no son de EMT (interurbanos como el 151, 153, 158, 827 o los u
 
 1. Crea una cuenta gratuita en Cloudflare → **Workers & Pages** → **Create** → **Worker** → **Deploy**.
 2. **Edit code**, pega el contenido de `worker.js` y pulsa **Deploy**.
-3. Copia la URL del worker (`https://xxx.workers.dev`) en **Ajustes → URL de tu proxy**.
+3. La web usa por defecto `https://marquesina.serbenda.workers.dev` (constante `PROXY` en `index.html`). Si despliegas otro worker, cambia esa constante o pon su URL en **Ajustes → Proxy**.
 
 Si publicas la web en otro dominio, añádelo a `ALLOWED_ORIGINS` en `worker.js`.
 
@@ -40,3 +40,7 @@ Es una web estática: activa GitHub Pages sobre la rama `main` (carpeta raíz).
 
 - Autobuses: API de EMT Madrid (Mobility Labs) y API del Consorcio Regional de Transportes de Madrid.
 - Mapa: © colaboradores de OpenStreetMap.
+
+## Documentación
+
+Arquitectura, fuentes de datos, despliegue y mantenimiento: [docs/ARQUITECTURA.md](docs/ARQUITECTURA.md).
