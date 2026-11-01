@@ -378,7 +378,7 @@ const crtmUrl = (path) => `${PROXY}/crtm/${path}`;
 // Una sola petición por parada: el worker junta datos de la parada, tiempos y posición de los buses
 async function crtmArrivals(raw){
   const code = crtmCode(raw.trim());
-  const j = await getJson(`${PROXY}/crtm/stop/${code}`);
+  const j = await getJson(`${PROXY}/crtm/stop/${code}`, 15000);   // el Consorcio a veces tarda varios segundos
   const {buses} = parseCrtmTimes(j, code);
   const name = (j.stop && j.stop.name) || `Parada ${code.replace(/^\d+_/,"")}`;
   const out = {id: code.replace(/^8_/,""), name, pos: j.stop && j.stop.pos, crtm: true, vehicles: j.vehicles || [], buses};
