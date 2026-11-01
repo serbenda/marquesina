@@ -44,7 +44,7 @@ async function emtLogin(env, force = false) {
   });
   const j = await r.json();
   const d = j.data && j.data[0];
-  if (!d || !d.accessToken) throw new Error(`EMT rechazó el inicio de sesión (${j.code || r.status}: ${j.description || "sin detalle"})`);
+  if (!d || !d.accessToken) throw new Error(`EMT rechazó el inicio de sesión (${j.code || r.status}: ${j.description || j.message || JSON.stringify(j).slice(0, 200)})`);
   emtToken = d.accessToken;
   emtTokenExp = Date.now() + ((d.tokenSecExpiration || 3600) - 120) * 1000;
   return emtToken;

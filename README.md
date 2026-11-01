@@ -47,4 +47,5 @@ Es una web estática: activa GitHub Pages sobre la rama `main` (carpeta raíz).
 
 ## Documentación
 
-Arquitectura, fuentes de datos, despliegue y mantenimiento: [docs/ARQUITECTURA.md](docs/ARQUITECTURA.md).
+- [docs/ARQUITECTURA.md](docs/ARQUITECTURA.md): arquitectura, fuentes de datos y funcionamiento interno.
+- [docs/MANTENIMIENTO.md](docs/MANTENIMIENTO.md): puesta en marcha y mantenimiento paso a paso (Mobility Labs, Cloudflare, GitHub Pages) y solución de errores.
