@@ -127,6 +127,7 @@ flowchart LR
 | Worker / avisos | Borrar la suscripción de otra persona | T | Muy baja | Bajo | Hace falta conocer su endpoint exacto (secreto de su navegador) | 🟢 Bajo |
 | Repetidor | Usarlo como proxy abierto | T/E | Media | Medio | Solo `/crtm/`, `/emt/`, `/push/` hacia 2 destinos fijos; 16 KB; 24 s | 🟢 Bajo |
 | Web | XSS con nombres de parada o líneas | T/E | Baja | Medio | Todo texto externo pasa por `esc()` | 🟢 Bajo |
+| Web | Enlace compartido malicioso (`?paradas=` con código o miles de paradas) | T/D | Baja | Bajo | `parseShareParam`: solo códigos que cumplen su patrón, máx. 20; se pintan con `esc()` | 🟢 Bajo |
 | Web | Leaflet manipulado en el CDN | T | Muy baja | Alto | **SRI** en el CSS y el JS de Leaflet | 🟢 Bajo |
 | Web | Fuentes de Google manipuladas | T | Muy baja | Bajo | Solo CSS y fuentes, no código | 🟢 Bajo |
 | Despliegue | Robo del token de Cloudflare | E | Baja | **Crítico** | Secreto de GitHub, solo usado en `worker.yml` | 🟡 Medio (token con *All zones*) |
@@ -179,6 +180,7 @@ flowchart TB
 | `isPushEndpoint()` | `push.js` | SSRF a través de los avisos |
 | `subId()` (SHA-256 del endpoint) | `worker.js` | Guardar el endpoint como clave legible |
 | `esc()` | `logic.js` | XSS |
+| `parseShareParam()` | `logic.js` | Enlaces compartidos con datos maliciosos |
 | `integrity=` (SRI) | `index.html` | Leaflet manipulado |
 | `keep_vars = true` | `wrangler.toml` | Que un despliegue borre los secretos |
 | Mensajes de error sin credenciales | `emtLogin()` | Filtrar claves en errores |

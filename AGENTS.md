@@ -18,7 +18,7 @@ Web estática (GitHub Pages) que muestra en tiempo real los autobuses de la Comu
 | `wrangler.toml` | Configuración del worker (dominio, Durable Object, cron) |
 | `relay/` | Repetidor de respaldo en Deno Deploy: reenvía al worker cuando Cloudflare está bloqueado |
 | `tests/` | `node:test` con respuestas reales en `tests/fixtures/` |
-| `.github/workflows/` | `tests.yml`, `pages.yml`, `worker.yml`, `healthcheck.yml` |
+| `.github/workflows/` | `tests.yml`, `pages.yml`, `worker.yml`, `healthcheck.yml` (con `.github/scripts/check.sh`), `e2e.yml` (prueba en navegador: `tests/e2e/web.e2e.mjs`) |
 | `docs/` | GUIA (para quien empieza), REFERENCIA (por dentro), ARQUITECTURA (porqués), MANTENIMIENTO (tareas), DOMINIO (DNS), RESPALDO (repetidor), HISTORIA (cómo se construyó), OPERACIONES (SRE), SEGURIDAD (amenazas y controles) |
 
 ## Reglas que no se pueden saltar
@@ -49,4 +49,6 @@ En local, la web usa el worker publicado (`api.bendi.dev` o `workers.dev`); el w
 - Los códigos del Consorcio llevan prefijo de red: `8_` interurbano, `9_` urbano, `4_` Metro, `5_` Cercanías, `10_` Metro Ligero, `6_` EMT. Lo que se escribe sin prefijo es `8_` (`crtmCode`).
 - `api.bendi.dev` solo funciona con el DNS de `bendi.dev` en Cloudflare ([docs/DOMINIO.md](docs/DOMINIO.md)).
 - Durante los partidos de LaLiga, varias operadoras bloquean IP de Cloudflare: por eso existe `relay/` y la web prueba tres direcciones (`PROXIES`). Ver [docs/RESPALDO.md](docs/RESPALDO.md).
+- Deno Deploy rechaza las rutas que acaban en `.php`: a través del worker, pide `/crtm/GetX` sin `.php`.
+- Los tests de `tests/*.test.js` simulan la red; la prueba de verdad es `tests/e2e/web.e2e.mjs` (Chromium + servicios reales).
 - Los avisos se calculan en hora de Madrid aunque el worker funcione en UTC (`alertActive`).

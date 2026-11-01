@@ -39,6 +39,7 @@ En español, en presente y diciendo **qué cambia para quien usa la web**:
 - [ ] Si cambia una ruta, un límite, un secreto o un paso de configuración: la documentación está al día ([REFERENCIA](docs/REFERENCIA.md), [GUIA](docs/GUIA.md), [MANTENIMIENTO](docs/MANTENIMIENTO.md)).
 - [ ] Hay una línea nueva en [CHANGELOG.md](CHANGELOG.md).
 - [ ] No hay contraseñas, claves ni tokens en ningún archivo.
+- [ ] La **Prueba en navegador** de la PR en verde (abre el código de la PR en Chromium contra el worker real).
 - [ ] Probado en el móvil (o con el modo móvil del navegador).
 
 ## Estilo del código

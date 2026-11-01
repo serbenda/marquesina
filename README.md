@@ -62,6 +62,7 @@ Funciona en **Madrid y toda la Comunidad**:
   - **Cerca de mí**: usa tu ubicación. La primera vez carga las 3 paradas más cercanas; después te enseña las de alrededor.
   - **Zona**: eliges un municipio y el mapa va allí.
   - **Buscar paradas**: muestra todas las paradas de la zona que ves en el mapa (autobús, Metro y Cercanías) mientras lo mueves.
+- 🔗 **Compartir tus paradas** con un enlace (Ajustes → *Compartir mis paradas*). Solo viajan los códigos: ni nombres, ni minutos, ni avisos.
 - 📶 **No quedarte en blanco si falla la conexión.** Se mantienen los últimos datos, hasta 15 minutos, indicando de cuándo son.
 - 📲 **Instalarla como una app**, con icono, pantalla completa y tema claro u oscuro.
 
@@ -185,8 +186,10 @@ marquesina/
 git clone https://github.com/serbenda/marquesina.git
 cd marquesina
 git switch development     # nunca se trabaja en main
-npm test                   # 30 tests, ~10 s
-npm run check              # sintaxis de los cuatro archivos JavaScript
+npm test                   # 41 tests, ~10 s
+npm run check              # sintaxis de los archivos JavaScript
+# prueba en navegador (como en GitHub):
+npm i --no-save playwright && npx playwright install chromium && node tests/e2e/web.e2e.mjs
 ```
 
 ### Cómo llega un cambio a la web
@@ -207,7 +210,8 @@ flowchart LR
 | **Tests** | Cada PR y cada push | Sintaxis y `npm test` |
 | **Publicar en GitHub Pages** | Al fusionar en `main` | Publica la web |
 | **Desplegar worker en Cloudflare** | Al fusionar cambios del worker en `main` | Lo publica y comprueba que responde |
-| **Chequeo de marquesina** | Cada hora | Comprueba web, Consorcio, EMT, avisos y las tres direcciones; si falla, llega un email |
+| **Chequeo de marquesina** | Cada hora | Comprueba web, Consorcio, EMT, avisos y las tres direcciones, y cuánto tardan; si falla, llega un email |
+| **Prueba en navegador** | Cada PR, tras publicar y cada 3 h | Abre la web en Chromium de verdad, busca paradas, **simula un bloqueo de Cloudflare** y prueba un enlace compartido |
 
 Antes de abrir una PR, lee [CONTRIBUTING.md](CONTRIBUTING.md). Lo más importante:
 
