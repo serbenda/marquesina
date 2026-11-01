@@ -33,7 +33,7 @@ body{background:var(--bg);color:var(--fg);font:15px/1.45 var(--body);display:fle
 .leaflet-container{background:var(--bg);font:inherit}
 
 .panel{flex:1 1 45%;min-height:0;background:var(--panel);border-top:1px solid var(--line);display:flex;flex-direction:column}
-.bar{display:flex;align-items:center;gap:10px;padding:10px max(16px,env(safe-area-inset-right,0px)) 10px max(16px,env(safe-area-inset-left,0px));border-bottom:1px solid var(--line)}
+.bar{display:flex;flex-wrap:wrap;align-items:center;gap:8px 10px;padding:10px max(16px,env(safe-area-inset-right,0px)) 10px max(16px,env(safe-area-inset-left,0px));border-bottom:1px solid var(--line)}
 .bar h1{font:700 22px/1 var(--display);letter-spacing:.02em;margin:0;text-transform:uppercase}
 .bar .mode{font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;padding:3px 7px;border-radius:4px;background:var(--line);color:var(--muted)}
 .bar .mode.live{background:var(--ok);color:#fff}
@@ -60,6 +60,7 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
 .chip.now{color:var(--now)} .chip.near{color:var(--warn)} .chip.far{color:var(--ok)}
 .empty,.err{color:var(--muted);padding:18px 0}
 .err{color:var(--now)}
+.note{margin:0;padding:8px max(16px,env(safe-area-inset-right,0px)) 8px max(16px,env(safe-area-inset-left,0px));border-bottom:1px solid var(--line);font-size:13px}
 
 .bus-icon{display:grid;place-items:center;font:700 14px/1 var(--display);color:#fff;border:2px solid #fff;border-radius:7px;box-shadow:0 1px 4px rgba(0,0,0,.35);transition:transform .3s}
 .stop-icon{width:18px;height:18px;border-radius:50%;background:var(--stop);border:4px solid var(--panel);box-shadow:0 0 0 2px var(--stop)}
@@ -94,8 +95,10 @@ input,select{font:15px var(--body);color:var(--fg);background:var(--bg);border:1
       <span id="ringTxt">60</span>
     </div>
     <button id="btnRefresh" aria-label="Actualizar ahora">↻</button>
+    <button id="btnFind" aria-pressed="false" title="Toca el mapa para ver las paradas del Consorcio cercanas">Buscar paradas</button>
     <button id="btnCfg">Ajustes</button>
   </div>
+  <p class="err note" id="note" hidden></p>
   <div class="list" id="list"><p class="empty">Cargando…</p></div>
 </section>
 
@@ -103,13 +106,17 @@ input,select{font:15px var(--body);color:var(--fg);background:var(--bg);border:1
   <form class="dlg" id="cfgForm" method="dialog">
     <h2>Ajustes</h2>
     <p>Sin credenciales funciona en modo demo con autobuses simulados. Para datos reales, regístrate gratis en Mobility Labs (EMT Madrid).</p>
-    <label>Paradas EMT (números separados por comas)
+    <label>Paradas EMT Madrid (números separados por comas)
       <input id="fStops" inputmode="numeric" placeholder="72, 3054"></label>
     <div class="two">
       <label>Email Mobility Labs<input id="fEmail" type="email" autocomplete="username"></label>
       <label>Contraseña<input id="fPass" type="password" autocomplete="current-password"></label>
     </div>
-    <label>URL de la API (o de tu proxy en Cloudflare)
+    <label>Paradas Consorcio: Alcobendas, Sanse, interurbanos (códigos de 5 cifras)
+      <input id="fCrtm" inputmode="numeric" placeholder="06756, 06758"></label>
+    <label>URL de tu proxy en Cloudflare (necesario para el Consorcio)
+      <input id="fProxy" placeholder="https://marquesina.tu-usuario.workers.dev"></label>
+    <label>URL de la API de EMT
       <input id="fBase" placeholder="https://openapi.emtmadrid.es"></label>
     <label>Actualizar cada
       <select id="fEvery"><option value="60">1 minuto</option><option value="120">2 minutos</option><option value="30">30 segundos</option></select></label>
@@ -123,13 +130,15 @@ input,select{font:15px var(--body);color:var(--fg);background:var(--bg);border:1
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script>
 // ---------- Configuración ----------
-const DEF = {stops:"72", email:"", pass:"", base:"https://openapi.emtmadrid.es", every:60};
+const DEF = {stops:"72", email:"", pass:"", crtm:"", proxy:"", base:"https://openapi.emtmadrid.es", every:60};
 const store = {
   get(){ try{ return {...DEF, ...JSON.parse(localStorage.getItem("marquesina")||"{}")}; }catch{ return {...DEF}; } },
   set(v){ try{ localStorage.setItem("marquesina", JSON.stringify(v)); }catch{} }
 };
 let cfg = store.get();
-const isLive = () => !!(cfg.email && cfg.pass);
+const hasEmt  = () => !!(cfg.email && cfg.pass);
+const hasCrtm = () => !!(cfg.crtm.trim() && cfg.proxy);
+const isLive  = () => hasEmt() || hasCrtm();
 
 // Colores por línea: estables según el número
 const PALETTE = ["#2b6cb0","#c0392b","#1f8a5b","#8e44ad","#d35400","#16808a","#b7950b","#5d6d7e"];
@@ -184,6 +193,54 @@ async function arrivals(stop){
   };
 }
 
+// ---------- API del Consorcio (CRTM): interurbanos y urbanos de Alcobendas, Sanse, etc. ----------
+// Da tiempos de llegada en tiempo real por parada, pero no la posición de los autobuses.
+// No admite llamadas directas desde otras webs (CORS), así que pasa por el proxy (worker.js).
+const crtmUrl = (path) => `${cfg.proxy.replace(/\/$/,"")}/crtm/${path}`;
+const asArray = v => v == null ? [] : Array.isArray(v) ? v : [v];
+const crtmStopCache = new Map();
+const crtmCode = c => c.includes("_") ? c : `8_${c.padStart(5,"0")}`;
+
+async function crtmStopInfo(code){
+  if (crtmStopCache.has(code)) return crtmStopCache.get(code);
+  const j = await (await fetch(crtmUrl(`GetStops.php?codStop=${code}`))).json();
+  const s = asArray(j.stops && j.stops.Stop)[0] || {};
+  const info = {name: s.name || `Parada ${code}`, pos: s.coordinates ? [s.coordinates.latitude, s.coordinates.longitude] : null};
+  crtmStopCache.set(code, info);
+  return info;
+}
+async function crtmArrivals(raw){
+  const code = crtmCode(raw.trim());
+  const [info, j] = await Promise.all([
+    crtmStopInfo(code),
+    fetch(crtmUrl(`GetStopsTimes.php?codStop=${code}&type=1&orderBy=2&stopTimesByIti=3`)).then(r=>r.json())
+  ]);
+  const st = j.stopTimes;
+  if (!st) throw new Error(`La parada ${raw} del Consorcio no devolvió datos.`);
+  const now = new Date(st.actualDate).getTime();
+  return {
+    id: code.replace(/^8_/,""), name: info.name, pos: info.pos, crtm: true,
+    buses: (()=>{
+      const perLine = {};
+      return asArray(st.times && st.times.Time).map((t,i)=>({
+        key:`c-${code}-${t.line.shortDescription}-${i}`, line:t.line.shortDescription,
+        dest:(t.destination||"").replace(/^.*?-\s*/,"") || t.destination,
+        eta:Math.max(0, Math.round((new Date(t.time).getTime() - now)/1000)), dist:null, pos:null,
+        // Los tiempos de horario llevan un código con el nombre de la línea; los del GPS, el del vehículo
+        live: !(t.codIssue||"").startsWith(t.line.codLine)
+      })).sort((a,b)=>a.eta-b.eta)
+        .filter(b=> b.eta <= 90*60 && (perLine[b.line] = (perLine[b.line]||0) + 1) <= 2);
+    })()
+  };
+}
+async function crtmNearest(lat, lng){
+  const j = await (await fetch(crtmUrl(`GetNearestStopsByLocation.php?latitude=${lat.toFixed(5)}&longitude=${lng.toFixed(5)}&mode=&method=1&precision=350`))).json();
+  return asArray(j.stops && j.stops.Stop).filter(s=>/^8_/.test(s.codStop)).map(s=>({
+    code:s.shortCodStop, name:s.name, pos:[s.coordinates.latitude, s.coordinates.longitude],
+    lines:asArray(s.lines && s.lines.Line).map(l=>l.shortDescription)
+  }));
+}
+
 // ---------- Demo: buses simulados que se acercan a la parada ----------
 const DEMO_STOP = {id:"72", name:"Demo · Cibeles", pos:[40.4193,-3.6932]};
 const demoBuses = [
@@ -229,7 +286,7 @@ function renderList(){
       const e = fmtEta(eta), [cls,lbl] = status(eta);
       return `<div class="row" data-key="${b.key}">
         <div class="badge" style="background:${colorFor(b.line)}">${b.line}</div>
-        <div class="dest"><b>${b.dest}</b><small>${fmtDist(b.dist)}${b.pos?"":" · sin posición"}</small></div>
+        <div class="dest"><b>${b.dest}</b><small>${s.crtm ? (b.live ? "En directo (GPS)" : "Según horario") : fmtDist(b.dist) + (b.pos?"":" · sin posición")}</small></div>
         <div class="eta"><strong>${e.txt}<small style="font-size:13px"> ${e.unit}</small></strong><span class="chip ${cls}">${lbl}</span></div>
       </div>`;
     }).join("") || '<p class="empty">No hay autobuses previstos ahora mismo.</p>';
@@ -242,7 +299,16 @@ function renderMap(){
   const seen = new Set(), bounds = [];
   for (const s of last){
     if (s.error) continue;
-    if (s.pos){ L.marker(s.pos,{icon:stopIcon}).bindTooltip(s.name).addTo(layerStops); bounds.push(s.pos); }
+    if (s.pos){
+      const mk = L.marker(s.pos,{icon:stopIcon}).addTo(layerStops); bounds.push(s.pos);
+      if (s.crtm){
+        // El Consorcio no da posiciones: mostramos las próximas llegadas junto a la parada
+        const next = s.buses.slice().sort((a,b)=>a.eta-b.eta).slice(0,3)
+          .map(b=>`<b style="color:${colorFor(b.line)}">${b.line}</b> ${fmtEta(b.eta).txt}′`).join(" · ");
+        mk.bindTooltip(next || s.name,{permanent:true,direction:"top",offset:[0,-10]});
+        mk.bindPopup(`<b>${s.name}</b><br>Parada ${s.id}`);
+      } else mk.bindTooltip(s.name);
+    }
     for (const b of s.buses){
       if (!b.pos) continue;
       seen.add(b.key); bounds.push(b.pos);
@@ -276,8 +342,12 @@ async function refresh(){
   document.getElementById("mode").classList.toggle("live", isLive());
   if (!isLive()){ last = demoArrivals(); }
   else {
-    last = await Promise.all(stops.map(s=>arrivals(s).catch(err=>({id:s, error:
-      err instanceof TypeError ? `No se pudo conectar con la API desde el navegador (parada ${s}). Si es un bloqueo CORS, usa el proxy de Cloudflare y pon su URL en Ajustes.` : err.message}))));
+    const jobs = [];
+    if (hasEmt()) jobs.push(...stops.map(s=>arrivals(s).catch(err=>({id:s, error:
+      err instanceof TypeError ? `No se pudo conectar con la API de EMT (parada ${s}).` : err.message}))));
+    if (hasCrtm()) jobs.push(...cfg.crtm.split(/[,\s]+/).filter(Boolean).map(s=>crtmArrivals(s).catch(err=>({id:s, error:
+      err instanceof TypeError ? `No se pudo conectar con el Consorcio a través del proxy (parada ${s}). Revisa la URL del proxy en Ajustes.` : err.message}))));
+    last = await Promise.all(jobs);
   }
   fetchedAt = Date.now();
   nextAt = fetchedAt + cfg.every*1000;
@@ -299,16 +369,63 @@ document.getElementById("btnRefresh").onclick = refresh;
 const dlg = document.getElementById("cfg");
 document.getElementById("btnCfg").onclick = ()=>{
   fStops.value = cfg.stops; fEmail.value = cfg.email; fPass.value = cfg.pass;
+  fCrtm.value = cfg.crtm; fProxy.value = cfg.proxy;
   fBase.value = cfg.base; fEvery.value = String(cfg.every); dlg.showModal();
 };
 document.getElementById("cfgForm").addEventListener("submit", ()=>{
   cfg = {stops:fStops.value.trim()||DEF.stops, email:fEmail.value.trim(), pass:fPass.value,
+         crtm:fCrtm.value.trim(), proxy:fProxy.value.trim().replace(/\/$/,""),
          base:(fBase.value.trim()||DEF.base).replace(/\/$/,""), every:+fEvery.value};
   store.set(cfg); token = null; fitted = false; refresh();
 });
 document.getElementById("btnDemo").onclick = ()=>{
-  cfg = {...cfg, email:"", pass:""}; store.set(cfg); fitted = false; dlg.close(); refresh();
+  cfg = {...cfg, email:"", pass:"", crtm:""}; store.set(cfg); fitted = false; dlg.close(); refresh();
 };
+
+// ---------- Buscar paradas del Consorcio tocando el mapa ----------
+const layerFind = L.layerGroup().addTo(map);
+const btnFind = document.getElementById("btnFind");
+let finding = false;
+function setFinding(on){
+  finding = on; btnFind.setAttribute("aria-pressed", on);
+  btnFind.classList.toggle("primary", on);
+  btnFind.textContent = on ? "Toca el mapa" : "Buscar paradas";
+  if (!on) layerFind.clearLayers();
+}
+btnFind.onclick = ()=>{
+  if (!cfg.proxy){ showNote("Para buscar paradas del Consorcio, pon antes la URL de tu proxy en Ajustes."); return; }
+  if (!finding) map.setView([40.545,-3.635], 15);   // Alcobendas / Sanse
+  setFinding(!finding);
+};
+map.on("click", async e=>{
+  if (!finding) return;
+  layerFind.clearLayers();
+  try{
+    const found = await crtmNearest(e.latlng.lat, e.latlng.lng);
+    if (!found.length){ showNote("No hay paradas del Consorcio cerca de ese punto."); return; }
+    for (const s of found){
+      const added = cfg.crtm.split(/[,\s]+/).includes(s.code);
+      L.circleMarker(s.pos,{radius:8,color:"#fff",weight:2,fillColor:colorFor(s.code),fillOpacity:1})
+        .bindPopup(`<b>${s.name}</b><br>Parada ${s.code}<br>Líneas: ${s.lines.join(", ")}<br>
+          <button data-add="${s.code}" style="margin-top:6px"${added?" disabled":""}>${added?"Ya añadida":"Añadir a mis paradas"}</button>`)
+        .addTo(layerFind);
+    }
+  }catch(err){ showNote("No se pudo consultar el Consorcio. Revisa la URL del proxy en Ajustes."); }
+});
+document.addEventListener("click", e=>{
+  const code = e.target.dataset && e.target.dataset.add; if (!code) return;
+  const list = cfg.crtm.split(/[,\s]+/).filter(Boolean);
+  if (!list.includes(code)) list.push(code);
+  cfg = {...cfg, crtm:list.join(", ")}; store.set(cfg);
+  e.target.textContent = "Añadida"; e.target.disabled = true;
+  refresh();
+});
+let noteTimer;
+function showNote(msg){
+  const p = document.getElementById("note");
+  p.textContent = msg; p.hidden = false;
+  clearTimeout(noteTimer); noteTimer = setTimeout(()=>{ p.hidden = true; }, 6000);
+}
 
 refresh();
 </script>
