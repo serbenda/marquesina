@@ -317,6 +317,19 @@ flowchart LR
 
 ---
 
+## Fase 12 · Vigilancia de verdad y mejoras de uso (1 nov, 20:56)
+
+Tras la prueba de campo en 10 localidades ([OPERACIONES.md](OPERACIONES.md), después de INC-7), lo que quedaba por mejorar sin tocar las cuentas del dueño:
+
+1. **Prueba en navegador** (`e2e.yml`): Chromium de verdad contra los servicios reales, con un **bloqueo de Cloudflare simulado**. Es la prueba que habría detectado INC-6 antes de que lo viera el usuario.
+2. **Tiempos en el chequeo horario**: avisa también si algo va lento, no solo si se cae.
+3. **Aviso mientras busca** y mensaje claro en paradas sin servicio: la búsqueda puede tardar varios segundos y antes no se veía nada.
+4. **Compartir paradas por enlace**, solo con los códigos.
+
+Al montar la prueba se aprendieron dos cosas útiles: `ubuntu-latest` ya era Ubuntu 26.04 y Playwright aún no lo admitía (se fijó 24.04), y en las expresiones de GitHub Actions un texto vacío cuenta como falso.
+
+---
+
 ## Registro de decisiones
 
 Cada decisión importante, con su motivo (formato *ADR*, *Architecture Decision Record*, simplificado):

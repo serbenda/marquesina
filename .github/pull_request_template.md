@@ -9,6 +9,7 @@
 ## Cómo se ha probado
 
 - [ ] `npm test` pasa
+- [ ] La *Prueba en navegador* de la PR está en verde
 - [ ] Probado en el móvil (o en el modo móvil del navegador)
 
 ## Lista de comprobación

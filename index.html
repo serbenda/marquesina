@@ -116,6 +116,8 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
 .chip.now{color:var(--now)} .chip.near{color:var(--warn)} .chip.far{color:var(--ok)}
 .empty,.err{color:var(--muted);padding:18px 0}
 .err{color:var(--now)}
+.note.busy::before{content:"";display:inline-block;width:10px;height:10px;margin-right:8px;border:2px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite;vertical-align:-1px}
+@keyframes spin{to{transform:rotate(360deg)}}
 .note{margin:0;padding:8px max(16px,env(safe-area-inset-right,0px)) 8px max(16px,env(safe-area-inset-left,0px));border-bottom:1px solid var(--line);font-size:13px}
 
 /* Los buses se deslizan hasta su nueva posición; durante el zoom no, para que no se queden atrás */
@@ -174,6 +176,8 @@ input,select{font:15px var(--body);color:var(--fg);background:var(--bg);border:1
       <input id="fCrtm" inputmode="numeric" placeholder="06756, 06758"></label>
     <label>Actualizar cada
       <select id="fEvery"><option value="10">10 segundos</option><option value="15">15 segundos</option><option value="30">30 segundos</option><option value="60">1 minuto</option></select></label>
+    <p><button type="button" id="btnShare">Compartir mis paradas</button><br>
+      <small>Crea un enlace con tus paradas (solo los códigos: ni nombres, ni minutos, ni avisos).</small></p>
     <div class="actions">
       <button type="submit" class="primary">Guardar</button>
     </div>
@@ -259,7 +263,8 @@ input,select{font:15px var(--body);color:var(--fg);background:var(--bg);border:1
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js" integrity="sha512-puJW3E/qXDqYp9IfhAI54BJEaWIfloJ7JWs7OeD5i6ruC9JZL1gERT1wjtwXFlh7CjE7ZJ+/vcRZRkIYIb6p4g==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 <script type="module">
 import { asArray, esc, crtmCode, fmtEta, status, fmtDist, fmtAge, parseEmt, parseCrtmTimes, parseCrtmVehicles,
-         groupByLine, leaveInfo, bestLeave, parseNearest, parseEmtNear, mergeStops, stopNetwork } from "./logic.js";
+         groupByLine, leaveInfo, bestLeave, parseNearest, parseEmtNear, mergeStops, stopNetwork,
+         shareParam, parseShareParam } from "./logic.js";
 import { unb64url } from "./push.js";
 
 // =====================================================================================================
@@ -300,7 +305,29 @@ const store = {
   },
   set(v){ try{ localStorage.setItem("marquesina", JSON.stringify(v)); }catch{} }
 };
+const hadSaved = (() => { try { return localStorage.getItem("marquesina") !== null; } catch { return false; } })();
 let cfg = store.get();
+
+// ---------- Enlace compartido (?paradas=emt:69,crtm:06756) ----------
+// Se añaden las paradas del enlace a las tuyas (o sustituyen a las de ejemplo si es tu primera vez)
+// y se quita el parámetro de la dirección para que no se vuelvan a añadir al recargar.
+let sharedNote = "";
+{
+  const param = new URLSearchParams(location.search).get("paradas");
+  if (param !== null) {
+    const shared = parseShareParam(param);
+    const list = s => String(s || "").split(/[,\s]+/).filter(Boolean);
+    const base = hadSaved ? cfg : {...cfg, stops: "", crtm: ""};
+    const emt = list(base.stops), crtm = list(base.crtm);
+    let added = 0;
+    for (const c of shared.emt) if (!emt.includes(c)) { emt.push(c); added++; }
+    for (const c of shared.crtm) if (!crtm.some(x => crtmCode(x) === crtmCode(c))) { crtm.push(c); added++; }
+    if (added) { cfg = {...base, stops: emt.join(", "), crtm: crtm.join(", ")}; store.set(cfg); }
+    sharedNote = added ? `Añadidas ${added} ${added === 1 ? "parada" : "paradas"} del enlace compartido.`
+               : (shared.emt.length + shared.crtm.length ? "Ya tenías todas las paradas del enlace." : "El enlace no tenía paradas válidas.");
+    try { history.replaceState(null, "", location.pathname + location.hash); } catch {}
+  }
+}
 const hasEmt  = () => !!cfg.stops.trim();
 const hasCrtm = () => !!cfg.crtm.trim();
 const isLive  = () => hasEmt() || hasCrtm();
@@ -446,7 +473,9 @@ function renderList(){
         <div class="dest"><b>${esc(g.dest)}</b><small>${detail}${more ? ` · <span class="next">luego ${more}</span>` : ""}</small></div>
         <div class="eta"><strong>${e.txt}<small style="font-size:13px"> ${e.unit}</small></strong>${chipFor(g, m.walk)}</div>
       </div>`;
-    }).join("") || '<p class="empty">No hay autobuses previstos ahora mismo.</p>';
+    }).join("") || (s.crtm
+      ? '<p class="empty">Sin servicio previsto en la próxima hora y media. Puede que a esta hora no pasen autobuses por esta parada (de noche, en una cabecera o una línea que no circula hoy).</p>'
+      : '<p class="empty">No hay autobuses previstos ahora mismo.</p>');
     const sub = [m.alias ? esc(s.name) : "", `${kindOf(s)} ${esc(String(s.id).replace(/^\d+_/,""))}`, m.walk ? `${m.walk} min andando` : ""].filter(Boolean).join(" · ")
       + (s.stale ? `<span class="stale">Sin datos nuevos · son de ${fmtAge(Date.now() - s.at)}</span>` : "");
     const editBtn = `<button class="edit" data-edit="${esc(stopKey(s))}" data-name="${esc(s.name)}">Editar</button>`;
@@ -600,6 +629,21 @@ document.getElementById("cfgForm").addEventListener("submit", ()=>{
   store.set(cfg); fitted = false; refresh();
 });
 
+// Compartir: con el menú del sistema (móvil) o copiando el enlace
+document.getElementById("btnShare").onclick = async ()=>{
+  const param = shareParam(cfg);
+  if (!param){ showNote("Aún no tienes paradas que compartir."); return; }
+  const url = `${location.origin}${location.pathname}?paradas=${encodeURIComponent(param).replace(/%2C/g, ",").replace(/%3A/g, ":")}`;
+  try {
+    if (navigator.share) { await navigator.share({title: "Mis paradas en Marquesina", url}); return; }
+    await navigator.clipboard.writeText(url);
+    dlg.close(); showNote("Enlace copiado. Pégalo donde quieras compartirlo.");
+  } catch (e) {
+    if (e && e.name === "AbortError") return;   // se canceló el menú de compartir
+    dlg.close(); showNote(url, {ms: 30000});      // sin portapapeles: se enseña para copiarlo a mano
+  }
+};
+
 // ---------- Editar una parada: nombre, minutos andando, favorita, quitar ----------
 const stopDlg = document.getElementById("stopDlg");
 let editing = null;
@@ -672,11 +716,13 @@ async function loadVisibleStops(){
   if (map.getZoom() < 15){ layerFind.clearLayers(); showNote("Acerca el mapa (o toca una zona) para ver sus paradas."); return; }
   const seq = ++findSeq, c = map.getCenter();
   const radius = Math.min(1500, map.distance(c, map.getBounds().getNorthEast()));
+  showNote("Buscando paradas en esta zona… (la primera vez puede tardar unos segundos)", {ms: 0, busy: true});
   try{
     const found = await crtmNearest(c.lat, c.lng, radius);
     if (seq !== findSeq || !finding) return;   // el mapa se movió mientras tanto
     layerFind.clearLayers();
     if (!found.length){ showNote("No hay paradas en esta zona."); return; }
+    showNote(`${found.length} ${found.length === 1 ? "parada" : "paradas"} en esta zona: toca una para añadirla.`);
     for (const s of found){
       const added = (s.net==="emt" ? cfg.stops : cfg.crtm).split(/[,\s]+/).includes(s.code);
       L.circleMarker(s.pos,{renderer:findRenderer, radius:7, color:"#fff", weight:2, fillColor:KIND_COLOR[s.kind]||"#5d6d7e", fillOpacity:1})
@@ -708,8 +754,7 @@ document.getElementById("zoneForm").addEventListener("submit", e=>{
   const name = Object.keys(ZONES).find(z => norm(z) === norm(q)) || Object.keys(ZONES).find(z => norm(z).includes(norm(q)));
   if (!q || !name){ e.preventDefault(); showNote("No encuentro ese municipio. Elige uno de la lista o mueve el mapa hasta él."); return; }
   map.setView(ZONES[name], 15);
-  if (finding) loadVisibleStops(); else setFinding(true);
-  showNote(`${name}: toca una parada para añadirla.`);
+  if (finding) loadVisibleStops(); else setFinding(true);   // loadVisibleStops avisa mientras busca y al terminar
 });
 
 document.addEventListener("click", e=>{
@@ -726,16 +771,16 @@ document.addEventListener("click", e=>{
 const hasOwnStops = () => Object.keys(cfg.meta).length > 0 || (cfg.stops.trim() !== "" || cfg.crtm.trim() !== DEF.crtm);
 function nearMe(onLoaded){
   if (!navigator.geolocation){ showNote("Este navegador no permite usar la ubicación."); return; }
-  showNote("Buscando tu ubicación…");
+  showNote("Buscando tu ubicación…", {ms: 0, busy: true});
   navigator.geolocation.getCurrentPosition(async p=>{
     try{
       const {latitude:lat, longitude:lng} = p.coords;
       if (hasOwnStops() && !onLoaded){
         map.setView([lat,lng], 16);
-        if (finding) loadVisibleStops(); else setFinding(true);
-        showNote("Estas son las paradas de tu alrededor: toca una para añadirla.");
+        if (finding) loadVisibleStops(); else setFinding(true);   // avisa mientras busca y al terminar
         return;
       }
+      showNote("Buscando paradas cerca de ti…", {ms: 0, busy: true});
       const found = (await crtmNearest(lat, lng, 600))
         .sort((a,b)=>map.distance([lat,lng],a.pos)-map.distance([lat,lng],b.pos)).slice(0,3);
       if (!found.length){ showNote("No hay paradas cerca de ti."); return; }
@@ -854,13 +899,18 @@ if (isIOS && !standalone) {
 }
 
 let noteTimer;
-function showNote(msg){
+// Mensaje bajo la barra. ms = cuánto se ve (0 = hasta que lo sustituya otro);
+// busy = con ruedita, para esperas largas como la búsqueda de paradas (puede tardar hasta 10 s la primera vez)
+function showNote(msg, {ms = 6000, busy = false} = {}){
   const p = document.getElementById("note");
   p.textContent = msg; p.hidden = false;
-  clearTimeout(noteTimer); noteTimer = setTimeout(()=>{ p.hidden = true; }, 6000);
+  p.classList.toggle("busy", busy);
+  clearTimeout(noteTimer);
+  if (ms) noteTimer = setTimeout(()=>{ p.hidden = true; p.classList.remove("busy"); }, ms);
 }
 
 refresh();
+if (sharedNote) showNote(sharedNote);
 if (firstVisit) setTimeout(()=> introDlg.showModal(), 600);
 </script>
 </body>

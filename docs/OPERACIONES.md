@@ -164,9 +164,13 @@ flowchart LR
 | Repetidor de respaldo | `marquesina.serbenda.deno.net/push/key` | `"publicKey"` |
 | Búsqueda de paradas a través del repetidor | `marquesina.serbenda.deno.net/crtm/GetNearestStopsByLocation?…` | `"stops"` |
 
+Cada paso **mide su tiempo** y falla si supera su máximo (web 10 s, Consorcio 15 s, EMT 10 s, claves 5 s, búsqueda 25 s). Los tiempos quedan en la pestaña **Summary** de cada ejecución.
+
+**La prueba en navegador** (`e2e.yml`) completa la vigilancia: abre la web en Chromium de verdad, comprueba que se pone **En vivo**, busca paradas en Alcobendas, **simula el bloqueo de LaLiga** cortando `api.bendi.dev` y `*.workers.dev` (la web tiene que seguir funcionando por el repetidor, también la búsqueda en Sanse) y prueba un enlace compartido. Se ejecuta en cada PR (con el código de la PR), tras cada publicación y cada 3 horas.
+
 **Puntos ciegos conocidos:**
-- El chequeo se ejecuta **desde EE. UU.** (GitHub). No ve los bloqueos de redes españolas. Para eso solo sirve probar desde la red afectada.
-- No mide la **latencia** ni si los **avisos llegan** de verdad.
+- Todo se ejecuta **desde EE. UU.** (GitHub). El bloqueo de las operadoras españolas se **simula**; si algún día bloquearan también Deno, solo se vería desde una red española.
+- No se comprueba que los **avisos lleguen** de verdad a un móvil.
 - GitHub **desactiva** los chequeos programados tras 60 días sin cambios en el repo.
 
 ---
@@ -386,8 +390,8 @@ Las búsquedas repetidas en la misma zona tardan milisegundos (caché de 1 día)
 
 | Mejora | Qué resuelve | Esfuerzo |
 |---|---|---|
-| Chequeo desde España (por ejemplo, un runner propio o un servicio de monitorización con nodos en España) | Detectar bloqueos de operadoras españolas | Medio |
-| Medir la latencia en el chequeo | Detectar lentitud, no solo caídas | Bajo |
+| Chequeo desde España (por ejemplo, un runner propio o un servicio de monitorización con nodos en España) | Detectar bloqueos reales de operadoras españolas (hoy se simulan) | Medio |
+| Que Deno Deploy publique solo `main` | No agotar las 15 publicaciones por hora del plan sin verificar (la publicación de prueba de cada cambio de `development` sale en rojo, sin efecto en la web) | Bajo (panel de Deno) |
 | Copia del worker completa fuera de Cloudflare | Quitar el último SPOF | Alto |
 | Exportar periódicamente las suscripciones | Poder recuperar los avisos | Medio |
 | Verificar la organización de Deno Deploy | Límites ×100 si crece el uso | Bajo |

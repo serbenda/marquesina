@@ -851,7 +851,7 @@ Cada archivo de código empieza con un bloque que explica qué hace, quién lo u
 
 - [ ] La web carga y pone **En vivo**.
 - [ ] El aviso de prueba llega al móvil.
-- [ ] GitHub → **Actions**: los 4 robots en verde (el chequeo comprueba también el repetidor).
+- [ ] GitHub → **Actions**: los 5 robots en verde (el chequeo y la prueba en navegador comprueban también el repetidor).
 - [ ] Cloudflare → worker `marquesina` → **Metrics**: lejos del límite de 100.000 peticiones al día.
 - [ ] Cloudflare → **API Tokens**: `marquesina-github` sigue activo.
 - [ ] Mobility Labs: la aplicación `marquesina` sigue activa (si la habilitan, el código 84 desaparece).
@@ -874,7 +874,7 @@ Cada archivo de código empieza con un bloque que explica qué hace, quién lo u
 | Nameservers de bendi.dev | `hassan.ns.cloudflare.com` · `magali.ns.cloudflare.com` |
 | Secretos del worker (nombres) | `EMT_CLIENT_ID` · `EMT_PASSKEY` · `EMT_EMAIL` · `EMT_PASSWORD` |
 | Secreto de GitHub (nombre) | `CLOUDFLARE_API_TOKEN` |
-| Robots | `pages.yml` · `worker.yml` · `tests.yml` · `healthcheck.yml` |
+| Robots | `pages.yml` · `worker.yml` · `tests.yml` · `healthcheck.yml` · `e2e.yml` |
 | Base de datos de avisos | Durable Object `PushHub` |
 | Cron | `* * * * *` (cada minuto) |
 | Paradas de ejemplo | Consorcio `06756` y `06758` (Alcobendas) |

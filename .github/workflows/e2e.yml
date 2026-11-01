@@ -1,0 +1,62 @@
+name: Prueba en navegador
+
+# Abre la web en un navegador de verdad (Chromium) y usa el worker, el repetidor, EMT y el Consorcio reales.
+# Escenarios: normal, bloqueo simulado de Cloudflare (como el de LaLiga) y enlace compartido.
+# Ver tests/e2e/web.e2e.mjs y docs/OPERACIONES.md.
+#
+#  - En cada Pull Request: prueba el código de la PR (servido en local) contra el worker publicado.
+#  - Tras publicar la web y cada 3 horas: prueba la web publicada en bendi.dev.
+
+on:
+  pull_request:
+  workflow_run:
+    workflows: ["Publicar en GitHub Pages"]
+    types: [completed]
+  schedule:
+    - cron: "47 */3 * * *"
+  workflow_dispatch:
+    inputs:
+      modo:
+        description: "local = los archivos de la rama elegida; publicada = bendi.dev/marquesina"
+        type: choice
+        options: [local, publicada]
+        default: local
+
+permissions:
+  contents: read
+
+jobs:
+  e2e:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    # Ubuntu fijado: Playwright tarda en admitir cada versión nueva de ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      # Vacío = archivos de esta rama en local. Ojo: en las expresiones de Actions '' cuenta como falso,
+      # por eso la condición devuelve la dirección publicada y, si no, ''.
+      E2E_BASE: ${{ (github.event_name != 'pull_request' && !(github.event_name == 'workflow_dispatch' && inputs.modo == 'local')) && 'https://bendi.dev/marquesina/' || '' }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: Instalar Playwright y Chromium (solo para esta prueba; el proyecto no tiene dependencias)
+        run: |
+          npm i --no-save --no-package-lock playwright@1.55.0
+          npx playwright install --with-deps chromium
+
+      - name: Esperar a que GitHub Pages sirva la versión nueva
+        if: github.event_name == 'workflow_run'
+        run: sleep 60
+
+      - name: Prueba en navegador
+        run: node tests/e2e/web.e2e.mjs
+
+      - name: Guardar capturas si falla
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: capturas-e2e
+          path: tests/e2e/capturas/
+          if-no-files-found: ignore

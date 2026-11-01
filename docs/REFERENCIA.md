@@ -346,6 +346,38 @@ flowchart LR
   D --> I["Queda con las paradas de ejemplo"]
 ```
 
+
+### 4.10 Compartir paradas por enlace
+
+```mermaid
+sequenceDiagram
+  participant A as Persona A
+  participant W as Web (A)
+  participant B as Persona B
+  participant WB as Web (B)
+  A->>W: Ajustes → Compartir mis paradas
+  W->>W: shareParam(cfg) → "emt:69,crtm:06756"
+  W-->>A: Menú de compartir del móvil (o enlace copiado)
+  A->>B: bendi.dev/marquesina/?paradas=emt:69,crtm:06756
+  B->>WB: Abre el enlace
+  WB->>WB: parseShareParam(): solo códigos válidos, máx. 20, sin repetir
+  WB->>WB: Las añade a las suyas (o sustituye las de ejemplo si es su primera vez)
+  WB->>WB: Quita ?paradas= de la dirección (history.replaceState)
+  WB-->>B: "Añadidas 2 paradas del enlace compartido."
+```
+
+- **Solo viajan los códigos de parada.** Nunca los nombres propios ("Casa", "Cole"), los minutos andando ni los avisos.
+- Códigos válidos: EMT `^\d{1,6}$`; Consorcio `^(\d{1,2}_)?\d{1,6}$`. Todo lo demás se descarta, porque el enlace puede venir de cualquiera.
+- Se quita el parámetro de la dirección para que recargar no vuelva a añadirlas.
+
+### 4.11 Avisos bajo la barra (`showNote`)
+
+| Uso | Cómo |
+|---|---|
+| Mensaje normal | `showNote(texto)`: se ve 6 s |
+| Espera larga (búsqueda de paradas, ubicación) | `showNote(texto, {ms: 0, busy: true})`: con ruedita, hasta que lo sustituya el resultado |
+| Resultado de una búsqueda | *"N paradas en esta zona: toca una para añadirla."* |
+
 ---
 
 ## 5. La lógica (`logic.js`)
@@ -800,6 +832,9 @@ flowchart LR
   PUSHM --> P["🌐 Publicar en GitHub Pages"]
   PUSHM -- "solo si cambian worker.js, logic.js,<br/>push.js, wrangler.toml o worker.yml" --> W["⚙️ Desplegar worker"]
   CRON["⏰ minuto 17 de cada hora"] --> H["🩺 Chequeo de marquesina"]
+  PR --> E["🌍 Prueba en navegador"]
+  P -- "al terminar" --> E
+  CRON3["⏰ cada 3 horas"] --> E
   MAN["▶️ Run workflow (a mano)"] --> P
   MAN --> W
   MAN --> H
@@ -810,7 +845,8 @@ flowchart LR
 | **Tests** | `tests.yml` | Sintaxis de `worker.js`, `sw.js` y `logic.js` → `node --test tests/*.test.js` |
 | **Publicar en GitHub Pages** | `pages.yml` | Empaqueta el repo → lo publica en Pages |
 | **Desplegar worker en Cloudflare** | `worker.yml` | Valida el código → `wrangler deploy` → espera hasta 5 min a `api.bendi.dev/push/key` → comprueba Consorcio, EMT, avisos y `workers.dev` |
-| **Chequeo de marquesina** | `healthcheck.yml` | Web publicada → Consorcio → EMT → clave de avisos → dirección alternativa |
+| **Chequeo de marquesina** | `healthcheck.yml` | Web → Consorcio → EMT → clave de avisos → `workers.dev` → repetidor → búsqueda por el repetidor. Cada paso mide su tiempo (`.github/scripts/check.sh`), falla si pasa de su máximo y lo resume en la pestaña *Summary* |
+| **Prueba en navegador** | `e2e.yml` | Chromium de verdad (`tests/e2e/web.e2e.mjs`): en vivo + búsqueda en Alcobendas → **bloqueo simulado de Cloudflare** (todo por el repetidor) → enlace compartido. En las PR prueba el código de la PR contra el worker real; tras publicar y cada 3 h, la web publicada. Si falla, guarda capturas |
 
 ### 9.2 Qué hace `wrangler deploy`
 
@@ -899,6 +935,9 @@ flowchart TB
 | JWT VAPID | 12 h | `push.js` | Validez de la firma |
 | Cron | cada minuto | `wrangler.toml` | Revisión de avisos |
 | Chequeo | minuto 17 de cada hora | `healthcheck.yml` | Vigilancia |
+| Tiempos máximos del chequeo | web 10 s · Consorcio 15 s · EMT 10 s · claves 5 s · búsqueda 25 s | `healthcheck.yml` | Avisar de lentitud, no solo de caídas |
+| Prueba en navegador | en cada PR, tras publicar y cada 3 h (minuto 47) | `e2e.yml` | Detectar fallos reales del navegador y de los caminos |
+| Paradas por enlace compartido | 20 como mucho | `logic.js` (`parseShareParam`) | Enlaces de terceros |
 | Plan gratuito de Workers | 100.000 peticiones al día | Cloudflare | Límite de uso |
 | `pickProxy` | 4 s por camino (los tres a la vez) + 0,5 s de preferencia por `api.bendi.dev` | `index.html` | Elección del camino al abrir |
 | Plazo del repetidor | 24 s | `relay/relay.js` | Tiempo total para llegar al worker |
