@@ -105,7 +105,7 @@ input,select{font:15px var(--body);color:var(--fg);background:var(--bg);border:1
 <dialog id="cfg">
   <form class="dlg" id="cfgForm" method="dialog">
     <h2>Ajustes</h2>
-    <p>Sin credenciales funciona en modo demo con autobuses simulados. Para datos reales, regístrate gratis en Mobility Labs (EMT Madrid).</p>
+    <p>Alcobendas, Sanse e interurbanos funcionan sin registro: añade los códigos de parada o usa Buscar paradas. Para los autobuses de EMT Madrid hace falta una cuenta gratuita de Mobility Labs.</p>
     <label>Paradas EMT Madrid (números separados por comas)
       <input id="fStops" inputmode="numeric" placeholder="72, 3054"></label>
     <div class="two">
@@ -114,8 +114,8 @@ input,select{font:15px var(--body);color:var(--fg);background:var(--bg);border:1
     </div>
     <label>Paradas Consorcio: Alcobendas, Sanse, interurbanos (códigos de 5 cifras)
       <input id="fCrtm" inputmode="numeric" placeholder="06756, 06758"></label>
-    <label>URL de tu proxy en Cloudflare (necesario para el Consorcio)
-      <input id="fProxy" placeholder="https://marquesina.tu-usuario.workers.dev"></label>
+    <label>Proxy (déjalo vacío para usar el de marquesina)
+      <input id="fProxy" placeholder="https://marquesina.serbenda.workers.dev"></label>
     <label>URL de la API de EMT
       <input id="fBase" placeholder="https://openapi.emtmadrid.es"></label>
     <label>Actualizar cada
@@ -130,9 +130,15 @@ input,select{font:15px var(--body);color:var(--fg);background:var(--bg);border:1
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script>
 // ---------- Configuración ----------
-const DEF = {stops:"72", email:"", pass:"", crtm:"", proxy:"", base:"https://openapi.emtmadrid.es", every:60};
+// Proxy propio en Cloudflare: viene puesto para que nadie tenga que configurarlo
+const PROXY = "https://marquesina.serbenda.workers.dev";
+const DEF = {stops:"72", email:"", pass:"", crtm:"", proxy:PROXY, base:"https://openapi.emtmadrid.es", every:60};
 const store = {
-  get(){ try{ return {...DEF, ...JSON.parse(localStorage.getItem("marquesina")||"{}")}; }catch{ return {...DEF}; } },
+  get(){
+    let v; try{ v = {...DEF, ...JSON.parse(localStorage.getItem("marquesina")||"{}")}; }catch{ v = {...DEF}; }
+    if (!v.proxy) v.proxy = PROXY;   // ajustes antiguos guardados sin proxy
+    return v;
+  },
   set(v){ try{ localStorage.setItem("marquesina", JSON.stringify(v)); }catch{} }
 };
 let cfg = store.get();
@@ -291,7 +297,7 @@ function renderList(){
       </div>`;
     }).join("") || '<p class="empty">No hay autobuses previstos ahora mismo.</p>';
     return `<div class="stopname">${s.name} · ${s.id}</div>${rows}`;
-  }).join("");
+  }).join("") + (isLive() ? "" : '<p class="empty">Esto es una demo. Pulsa <b>Buscar paradas</b> y toca el mapa para ver los autobuses reales de tu parada.</p>');
 }
 
 function renderMap(){
@@ -369,12 +375,12 @@ document.getElementById("btnRefresh").onclick = refresh;
 const dlg = document.getElementById("cfg");
 document.getElementById("btnCfg").onclick = ()=>{
   fStops.value = cfg.stops; fEmail.value = cfg.email; fPass.value = cfg.pass;
-  fCrtm.value = cfg.crtm; fProxy.value = cfg.proxy;
+  fCrtm.value = cfg.crtm; fProxy.value = cfg.proxy === PROXY ? "" : cfg.proxy;
   fBase.value = cfg.base; fEvery.value = String(cfg.every); dlg.showModal();
 };
 document.getElementById("cfgForm").addEventListener("submit", ()=>{
   cfg = {stops:fStops.value.trim()||DEF.stops, email:fEmail.value.trim(), pass:fPass.value,
-         crtm:fCrtm.value.trim(), proxy:fProxy.value.trim().replace(/\/$/,""),
+         crtm:fCrtm.value.trim(), proxy:(fProxy.value.trim() || PROXY).replace(/\/$/,""),
          base:(fBase.value.trim()||DEF.base).replace(/\/$/,""), every:+fEvery.value};
   store.set(cfg); token = null; fitted = false; refresh();
 });
@@ -393,7 +399,6 @@ function setFinding(on){
   if (!on) layerFind.clearLayers();
 }
 btnFind.onclick = ()=>{
-  if (!cfg.proxy){ showNote("Para buscar paradas del Consorcio, pon antes la URL de tu proxy en Ajustes."); return; }
   if (!finding) map.setView([40.545,-3.635], 15);   // Alcobendas / Sanse
   setFinding(!finding);
 };
