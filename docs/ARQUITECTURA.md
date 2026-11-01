@@ -292,7 +292,7 @@ Configuración necesaria en el repo: **Settings → Pages → Source: GitHub Act
 ### Revisiones periódicas
 - **Cada pocos meses:** comprobar que las tres APIs siguen respondiendo igual (ver las URLs de prueba).
 - **Leaflet:** está fijado a 1.9.4. Para actualizarlo, cambiar la versión en las dos etiquetas (`<link>` del CSS y `<script>`) y probar el mapa.
-- **Acciones de los workflows:** `checkout@v4`, `configure-pages@v5`, `upload-pages-artifact@v3`, `deploy-pages@v4` y `cloudflare/wrangler-action@v3`. GitHub avisa en *Actions* cuando alguna queda obsoleta.
+- **Acciones de los workflows:** `checkout@v7`, `setup-node@v7`, `configure-pages@v5`, `upload-pages-artifact@v3`, `deploy-pages@v5` y `cloudflare/wrangler-action@v4`. Dependabot propone cada mes las versiones nuevas con una PR a `development`.
 
 ## 8. Seguridad y privacidad
 
