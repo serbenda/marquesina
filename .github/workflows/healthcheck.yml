@@ -30,3 +30,9 @@ jobs:
           body=$(curl -sS --retry 2 --retry-delay 10 "https://marquesina.serbenda.workers.dev/emt/arrives/69")
           echo "$body" | grep -q '"code":"00"' || { echo "EMT no responde bien:"; echo "$body" | head -c 400; exit 1; }
           echo "OK EMT"
+
+      - name: Avisos (clave VAPID del worker)
+        run: |
+          body=$(curl -fsS --retry 2 --retry-delay 10 "https://marquesina.serbenda.workers.dev/push/key")
+          echo "$body" | grep -q '"publicKey"' || { echo "El worker no devuelve la clave de los avisos:"; echo "$body" | head -c 400; exit 1; }
+          echo "OK avisos"

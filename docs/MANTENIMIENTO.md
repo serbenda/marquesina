@@ -17,7 +17,9 @@ Pasos concretos para montar desde cero, revisar o reparar los servicios externos
 | Secretos del worker | `EMT_CLIENT_ID` y `EMT_PASSKEY` (aplicación); `EMT_EMAIL` y `EMT_PASSWORD` (cuenta, respaldo) |
 | Icono de la aplicación | [`assets/icono.png`](../assets/icono.png) (512×512) |
 | Secreto de GitHub | `CLOUDFLARE_API_TOKEN` (despliegue del worker) |
-| Workflows | `pages.yml` (web), `worker.yml` (worker), `healthcheck.yml` (chequeo horario) |
+| Workflows | `pages.yml` (web), `worker.yml` (worker), `healthcheck.yml` (chequeo horario), `tests.yml` (tests en cada PR) |
+| Durable Object | `PushHub` (suscripciones y claves VAPID de los avisos) |
+| Cron del worker | `* * * * *` (revisa los avisos cada minuto) |
 
 ---
 
@@ -85,13 +87,12 @@ Hazlo si se filtran o si sospechas que hay un uso indebido:
 ### 2.3 Subir o actualizar el código
 Normalmente no hay que hacer nada: al fusionar en `main` un cambio de `worker.js`, el workflow **Desplegar worker en Cloudflare** lo publica solo (ver §2.7).
 
-Si el workflow fallara y hubiera que hacerlo a mano:
-1. Copia el archivo en texto plano desde https://raw.githubusercontent.com/serbenda/marquesina/main/worker.js con Ctrl/Cmd + A y Ctrl/Cmd + C.
-2. Cloudflare → **Compute (Workers)** → `marquesina` → **Edit code**.
-3. Borra todo el contenido del editor y pega con **Ctrl/Cmd + V**. El menú del clic derecho a veces no deja pegar; usa el teclado.
-4. **Deploy**, arriba a la derecha.
+El worker ya no es un solo archivo (importa `logic.js` y `push.js`, y declara el Durable Object y el cron en `wrangler.toml`), así que **no se puede pegar a mano** en el editor de Cloudflare. Si el despliegue falla:
+1. Repo → **Actions** → *Desplegar worker en Cloudflare* → abre la ejecución en rojo y mira el paso que falló.
+2. Corrige la causa (token caducado §2.7, error de sintaxis, etc.).
+3. **Run workflow** para relanzarlo.
 
-Si el editor no deja escribir, cierra la pestaña y vuelve a entrar en **Edit code**.
+No edites el código desde el panel de Cloudflare: el siguiente despliegue desde GitHub lo sobrescribiría.
 
 ### 2.4 Configurar los secretos de EMT
 1. Cloudflare → **Compute (Workers)** → `marquesina` → **Settings** → **Variables and Secrets**.
@@ -125,6 +126,14 @@ El workflow `.github/workflows/worker.yml` despliega el worker con wrangler. Nec
 3. **Probarlo:** repo → **Actions** → *Desplegar worker en Cloudflare* → **Run workflow**. Debe terminar en verde con "Worker desplegado y respondiendo".
 
 El token solo permite gestionar Workers. Si se filtra, se revoca en la misma pantalla de API Tokens y se crea otro.
+
+### 2.8 Durable Object y cron de los avisos
+Los crea el propio despliegue (`wrangler.toml`), no hay que hacer nada en el panel. Para revisarlos:
+- **Cron:** Cloudflare → `marquesina` → **Settings → Trigger events**: debe aparecer `* * * * *`.
+- **Durable Object:** Cloudflare → **Storage & databases → Durable Objects** → `marquesina_PushHub`.
+- **Logs:** Cloudflare → `marquesina` → **Logs / Observability**, filtrando por *scheduled*, para ver cada ejecución del cron.
+
+El plan gratuito incluye los Durable Objects con almacenamiento SQLite y los cron triggers. **No borres el Durable Object:** guarda las claves VAPID y todas las suscripciones (ver ARQUITECTURA §5.1).
 
 ## 3. GitHub Pages (web)
 
@@ -161,7 +170,9 @@ Abre estas URLs en el navegador:
 |---|---|---|
 | Worker y Consorcio | `https://marquesina.serbenda.workers.dev/crtm/GetStops.php?codStop=8_06756` | JSON con `"MARQUÉS VALDAVIA"` |
 | Worker y EMT (secretos) | `https://marquesina.serbenda.workers.dev/emt/arrives/69` | JSON con `"code":"00"` y llegadas en `data[0].Arrive` |
+| Avisos (clave VAPID) | `https://marquesina.serbenda.workers.dev/push/key` | JSON con `publicKey` (87 caracteres) |
 | Web publicada | `https://bendi.dev/marquesina/?v=N` | Etiqueta **En vivo** y paradas de Alcobendas |
+| Aviso real | En la web: *Editar* parada → *Avisarme para salir* → **Enviar aviso de prueba** | Llega la notificación "Marquesina: avisos activados" |
 
 Desde el navegador la ruta de EMT puede mostrar el JSON aunque CORS lo bloquee para otras webs. Si la URL responde bien pero la web no, revisa `ALLOWED_ORIGINS`.
 
@@ -182,7 +193,18 @@ El worker devuelve el código que da EMT para cada forma de entrar, sin incluir 
 
 ---
 
-## 6. Revisión periódica (cada pocos meses)
+## 7. Avisos que no llegan
+
+| Síntoma | Causa probable | Qué hacer |
+|---|---|---|
+| "Este navegador no permite notificaciones" | Navegador sin Web Push, o iPhone sin la app instalada | En iPhone: Compartir → Añadir a pantalla de inicio, abrir desde el icono y activar el aviso ahí (iOS 16.4+) |
+| "Sin permiso de notificaciones…" | Se denegó el permiso | Ajustes del navegador o del sistema → Notificaciones → permitir para bendi.dev (o para la app instalada) |
+| El aviso de prueba llega, pero los programados no | Falta indicar los minutos andando, el horario no coincide o el cron no se ejecuta | Revisar los minutos y la franja en *Editar*; revisar el cron (§2.8) |
+| Dejan de llegar a un móvil | La suscripción caducó (el navegador la renovó o se borraron los datos) | Volver a guardar el aviso en *Editar*: se crea una suscripción nueva |
+| No llegan a nadie | Se perdió la clave VAPID (se borró el Durable Object) o falla el worker | Comprobar `/push/key` (§4) y los logs. Si la clave cambió, cada usuario debe volver a activar sus avisos |
+| Llegan repetidos | Dos suscripciones del mismo usuario (por ejemplo, navegador y app instalada) | Normal: son dos dispositivos o apps distintas |
+
+## 8. Revisión periódica (cada pocos meses)
 
 - [ ] Las tres comprobaciones del §4 responden bien.
 - [ ] La aplicación `marquesina` sigue activa en Mobility Labs.
@@ -190,4 +212,6 @@ El worker devuelve el código que da EMT para cada forma de entrar, sin incluir 
 - [ ] Los workflows (Pages, worker y chequeo) siguen en verde y sin avisos de acciones obsoletas.
 - [ ] El chequeo horario sigue activo (no desactivado por inactividad).
 - [ ] El token `CLOUDFLARE_API_TOKEN` sigue siendo válido (Cloudflare → API Tokens).
+- [ ] El cron del worker sigue activo y el aviso de prueba llega (§4).
+- [ ] Los tests pasan (`npm test` o el workflow *Tests*).
 - [ ] La API del Consorcio mantiene el mismo formato (ver ARQUITECTURA §3.2).
