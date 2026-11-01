@@ -4,6 +4,7 @@ Lo más reciente, arriba. Cada entrada dice qué cambia para quien usa la web y 
 
 ## Sin publicar
 
+- **`api.bendi.dev` ya funciona:** el DNS de bendi.dev está en Cloudflare y el worker responde en su dominio propio.
 - **Documentación:** referencia técnica con diagramas ([docs/REFERENCIA.md](docs/REFERENCIA.md)), código comentado archivo por archivo, normas para hacer cambios ([CONTRIBUTING.md](CONTRIBUTING.md)), seguridad ([SECURITY.md](SECURITY.md)), guía para asistentes de IA ([AGENTS.md](AGENTS.md)), plantillas de issues y PR, y README nuevo.
 
 ## 1 de noviembre de 2026
