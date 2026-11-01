@@ -4,7 +4,7 @@ Este documento explica cómo está montada marquesina, de dónde salen los datos
 
 ## 1. Qué es
 
-Una web estática que muestra en un mapa los autobuses que van a llegar a las paradas que elige el usuario, con los minutos que faltan, y se actualiza sola cada 30 s, 1 min o 2 min.
+Una web estática que muestra en un mapa los autobuses que van a llegar a las paradas que elige el usuario, con los minutos que faltan, y se actualiza sola cada 15 s por defecto (10 s, 30 s o 1 min a elegir).
 
 - **Web:** https://bendi.dev/marquesina/ (GitHub Pages, repo `serbenda/marquesina`).
 - **Proxy:** https://marquesina.serbenda.workers.dev (Cloudflare Workers, cuenta de serbenda).
@@ -26,7 +26,9 @@ flowchart LR
 |---|---|---|---|
 | Web | `index.html` | Navegador del usuario | Automático: push a `main` → workflow `pages.yml` |
 | App instalable | `manifest.webmanifest`, `sw.js`, `assets/` | Navegador del usuario | Igual que la web |
-| Proxy | `worker.js`, `wrangler.toml` | Cloudflare Workers | Automático: cambios en `main` → workflow `worker.yml` |
+| Lógica compartida | `logic.js` | Navegador, worker y tests | Con la web y con el worker |
+| Proxy y avisos | `worker.js`, `push.js`, `wrangler.toml` | Cloudflare Workers + Durable Object `PushHub` + cron cada minuto | Automático: cambios en `main` → workflow `worker.yml` |
+| Tests | `tests/`, `package.json` | GitHub Actions en cada PR | Workflow `tests.yml` |
 | Vigilancia | `.github/workflows/healthcheck.yml` | GitHub Actions, cada hora | Forma parte del repo |
 | Despliegue | `.github/workflows/pages.yml` | GitHub Actions | Forma parte del repo |
 | Sin Jekyll | `.nojekyll` | GitHub Pages | Hace que GitHub sirva los archivos tal cual |
@@ -53,8 +55,8 @@ flowchart LR
   - `GetStops.php?codStop=8_06756`: nombre y coordenadas de la parada. Se guarda en caché en memoria mientras la página está abierta.
   - `GetStopsTimes.php?codStop=8_06756&type=1&orderBy=2&stopTimesByIti=3`: próximas llegadas (`stopTimes.times.Time[]`, con `line.shortDescription`, `destination`, `time` en ISO y `codIssue`).
   - `GetNearestStopsByLocation.php?latitude=..&longitude=..&mode=&method=1&precision=350`: paradas cercanas a un punto. Lo usan los botones **Buscar paradas** (punto tocado en el mapa) y **Cerca de mí** (ubicación del navegador; se quedan las 3 más cercanas).
-- **Posición de los autobuses** (por cada parada del Consorcio, en cada actualización):
-  1. Con las líneas y sentidos que salen en `GetStopsTimes`, se pide una vez por línea `GetLinesInformation.php?activeItinerary=1&codLine=<línea>`, que da los itinerarios con su sentido y sus paradas. Se guarda en memoria mientras la página está abierta.
+- **Posición de los autobuses** (lo hace el worker en `/crtm/stop/<parada>`, ver §5):
+  1. Con las líneas y sentidos que salen en `GetStopsTimes` (solo autobuses: modos 8 y 9), se pide una vez por línea `GetLinesInformation.php?activeItinerary=1&codLine=<línea>`, que da los itinerarios con su sentido y sus paradas. Se guarda en memoria del worker y 1 día en la caché de Cloudflare.
   2. Se elige el itinerario que contiene la parada y tiene ese sentido.
   3. `GetLineLocation.php?mode=<codMode>&codItinerary=<itinerario>&codLine=<línea>&codStop=<parada>&direction=<sentido>` devuelve `vehiclesLocation.VehicleLocation[]` con `codVehicle` (matrícula), `coordinates` y `service`. `mode` es `8` para interurbanos y `9` para urbanos de otros municipios.
   - Las llegadas no indican qué vehículo es, así que la lista y los buses del mapa no se enlazan uno a uno. Al tocar una fila, se centra el bus de esa línea más cercano a la parada.
@@ -93,6 +95,24 @@ Teselas de OpenStreetMap (`tile.openstreetmap.org`) con atribución. Para un uso
 - **Editar parada:** el botón *Editar* abre un diálogo con nombre, minutos andando, favorita y *Quitar parada*.
 - **Volver a la app:** al recuperar el foco (`visibilitychange`), si los datos tienen más de 15 s se refrescan al momento.
 
+### Buscar paradas, zonas y bienvenida
+- **Buscar paradas:** con el mapa a zoom 15 o más, carga las paradas de la zona visible (`GetNearestStopsByLocation` desde el centro, con radio hasta la esquina, máx. 1,5 km) cada vez que se mueve el mapa. Se pintan con el renderizador *canvas* de Leaflet (aguanta cientos de puntos) y con color por red: EMT, Interurbano, Urbano, Metro y Cercanías. `parseNearest()` (`logic.js`) separa EMT (`6_`) del resto.
+- **Zona:** lista fija de municipios y barrios con su centro (`ZONES` en `index.html`). La API de municipios del Consorcio (`GetMunicipalities.php`) devuelve error 500, por eso la lista es propia. Al elegir uno, el mapa va allí y activa *Buscar paradas*.
+- **Cerca de mí:** sin paradas propias, carga las 3 más cercanas. Con paradas propias, centra el mapa en tu ubicación y enseña las de alrededor sin borrar las tuyas.
+- **Bienvenida:** solo la primera vez (sin `localStorage["marquesina"]` ni `marquesina-intro`). Pregunta dónde coges el transporte (ubicación, municipio o ejemplo) y, con tu ubicación, el nombre y los minutos andando de la parada más cercana, que queda como favorita.
+
+### Mapa
+- **Movimiento suave:** los recuadros de los buses (`className: bus-marker`) tienen una transición CSS de 1,2 s, así se deslizan hasta la nueva posición en vez de saltar. Durante el zoom se desactiva (`.leaflet-zoom-anim`) para que no se queden atrás. Respeta `prefers-reduced-motion`.
+- **Pausa en segundo plano:** con la pestaña oculta o la app minimizada (`document.hidden`) no se consulta nada; al volver se actualiza si los datos tienen más de 5 s.
+- **Encuadre:** al cargar, se ajusta a tus paradas y a los buses a menos de 2,5 km de ellas, no a los que están lejos.
+- **Recuadros que no se pisan:** `spreadMarkers()` desplaza en abanico los recuadros que caen casi en el mismo punto de la pantalla. Se recalcula al hacer zoom.
+- **Metro:** colores oficiales de cada línea (`METRO` en `index.html`). En el resto, color estable por número de línea.
+
+### Datos antiguos
+- Si una parada falla al actualizar, se conservan sus últimos datos durante 15 minutos con `stale: true`. Cada parada lleva su propia hora de consulta (`at`), y los minutos se descuentan desde ella.
+- Debajo del nombre aparece *Sin conexión · datos hace N min*. Si fallan todas, la etiqueta superior pasa de *En vivo* a *Sin conexión*.
+- Solo hay una consulta en marcha a la vez. Las peticiones que llegan mientras tanto (por ejemplo, al añadir una parada) se hacen justo después, no se pierden.
+
 ### App instalable (PWA)
 
 - `manifest.webmanifest`: nombre, colores, `display: standalone` e iconos (192, 512 y uno *maskable* para Android).
@@ -110,18 +130,50 @@ Teselas de OpenStreetMap (`tile.openstreetmap.org`) con atribución. Para un uso
 | `stops` | Paradas EMT, separadas por comas |
 | `crtm` | Paradas del Consorcio (5 cifras) |
 | `proxy` | URL del worker. Vacío en el formulario = usar `PROXY` |
-| `every` | Segundos entre consultas (30, 60 o 120) |
+| `every` | Segundos entre consultas (10, 15, 30 o 60; por defecto 15) |
+| `alerts` | Avisos por parada (clave `emt:<id>` o `crtm:<id>`): `on`, `days` (1–7), `from`, `to`, `line`, `lead` (minutos de antelación) |
 | `meta` | Datos propios de cada parada, con clave `emt:<id>` o `crtm:<id>`: `alias` (nombre), `walk` (minutos andando), `fav` (favorita) |
 | `demo` | `true` si el usuario eligió el modo demo |
 
 ## 5. El proxy (`worker.js`)
 
-- `/crtm/<Archivo>.php?...` → `https://www.crtm.es/widgets/api/<Archivo>.php?...`. Solo deja pasar nombres que encajan con `Get*.php`, así no se puede usar como proxy abierto. Cloudflare cachea 20 s, de modo que varios usuarios mirando la misma parada generan una sola llamada al Consorcio.
-- `/emt/arrives/<parada>` → inicia sesión en EMT con los secretos de la aplicación (o los de la cuenta si fallan) y devuelve las llegadas de la parada (mismo JSON que EMT). Guarda la respuesta 20 s en la caché de Cloudflare (`caches.default`), así varios usuarios mirando la misma parada generan una sola consulta.
+- `/crtm/stop/<parada>` → **todo lo de una parada del Consorcio en una sola respuesta**: `stop` (nombre y posición, de `GetStops`, caché 1 día), `stopTimes` (de `GetStopsTimes`) y `vehicles` (posición de los buses de cada línea con `GetLinesInformation` + `GetLineLocation`). La web hace así 1 petición por parada en vez de hasta 8; las consultas al Consorcio desde el worker son subpeticiones y no cuentan en el límite diario.
+- `/crtm/<Archivo>.php?...` → `https://www.crtm.es/widgets/api/<Archivo>.php?...`. Solo deja pasar nombres que encajan con `Get*.php`, así no se puede usar como proxy abierto. Lo usa la búsqueda de paradas (`GetNearestStopsByLocation`). Cloudflare cachea 10 s.
+- `/emt/arrives/<parada>` → inicia sesión en EMT con los secretos de la aplicación (o los de la cuenta si fallan) y devuelve las llegadas de la parada (mismo JSON que EMT). Guarda la respuesta 10 s en la caché de Cloudflare (`caches.default`), así varios usuarios mirando la misma parada generan una sola consulta.
 - **CORS:** responde con `Access-Control-Allow-Origin` solo para los orígenes de `ALLOWED_ORIGINS` (`https://bendi.dev`, `https://serbenda.github.io`).
 - **Secretos:** `EMT_CLIENT_ID` y `EMT_PASSKEY` (y de respaldo `EMT_EMAIL` y `EMT_PASSWORD`) se configuran en Cloudflare → Worker `marquesina` → Settings → Variables and Secrets (tipo *Secret*). No están en el repo. Para cambiarlos (por ejemplo, si se regeneran en Mobility Labs), se editan ahí y se pulsa Deploy.
 - **No guarda ni registra las credenciales de los usuarios.**
-- **Límites del plan gratuito de Cloudflare:** 100.000 peticiones al día. Cada usuario con la web abierta hace unas 2 peticiones por parada y minuto (tiempos más, la primera vez, datos de la parada).
+- `/push/key`, `/push/subscribe`, `/push/unsubscribe`, `/push/test` → avisos programados (ver §5.1).
+- **Caché de 10 s:** EMT y el Consorcio refrescan las posiciones cada 15–30 s, así que consultar más a menudo no da datos nuevos; con 10 s, varias personas mirando la misma parada generan una sola consulta a la fuente.
+- **Límites del plan gratuito de Cloudflare:** 100.000 peticiones al día. Cada persona con la web abierta y a la vista hace 1 petición por parada cada 15 s (240 por parada y hora). Con la app en segundo plano no hace ninguna. El cron de los avisos suma 1.440 al día.
+
+### 5.1 Avisos programados (Web Push)
+
+**Flujo**
+1. En *Editar* parada, el usuario activa *Avisarme para salir*: días (L–D), franja (desde–hasta), línea (o cualquiera) y antelación (al salir, 3, 5 o 10 min antes). Requiere los minutos andando.
+2. La web pide permiso de notificaciones, obtiene la clave pública (`GET /push/key`) y se suscribe con `pushManager.subscribe()`.
+3. Envía la suscripción y **todos** sus avisos a `POST /push/subscribe`. Cada cambio vuelve a enviar la lista completa; si no queda ninguno, `POST /push/unsubscribe`.
+4. Un **cron cada minuto** (`[triggers] crons` en `wrangler.toml`) llama a `PushHub.check()`:
+   - Selecciona los avisos activos ahora (`alertActive()`, hora de Madrid, con horario de verano).
+   - Consulta cada parada una sola vez (EMT con la caché compartida de 10 s; Consorcio con `cacheTtl` de 10 s).
+   - Calcula la salida con `bestLeave()` (la misma función que la web) y avisa si `salir en ≤ antelación`.
+   - **No repite:** recuerda cada envío por suscripción, aviso, línea y hora prevista del bus (redondeada a 2 min) durante 2 horas.
+   - Si el servicio de push responde 404 o 410, la suscripción ha caducado y se borra.
+5. El service worker (`sw.js`) recibe el mensaje (evento `push`) y muestra la notificación. Al tocarla, abre o trae al frente la app.
+
+**Almacenamiento:** Durable Object `PushHub`, una sola instancia (`idFromName("hub")`), con almacenamiento SQLite (disponible en el plan gratuito). Claves:
+- `vapid`: par de claves VAPID. Se genera la primera vez y no cambia. **Si se borrara, todas las suscripciones dejarían de funcionar** y cada usuario tendría que reactivar sus avisos.
+- `sub:<hash del endpoint>`: suscripción (`endpoint`, `keys`) y avisos.
+- `sent`: avisos ya enviados (para no repetir).
+
+**Criptografía** (`push.js`, sin dependencias, solo WebCrypto):
+- Firma VAPID (RFC 8292): JWT ES256 con `aud` = origen del servicio de push, `exp` = 12 h, `sub` = `https://bendi.dev/marquesina`.
+- Cifrado del mensaje (RFC 8291, `aes128gcm`): ECDH P-256 con la clave del navegador, HKDF-SHA-256 y AES-128-GCM.
+- Solo se envía a servicios de push conocidos (Google, Mozilla, Apple, Windows): `isPushEndpoint()`. Así el worker no puede usarse para llamar a cualquier URL.
+
+**Límites:** 10 avisos por suscripción y 1.000 suscripciones en total. Los avisos que llegan incompletos (sin días, sin minutos andando…) se descartan.
+
+**Compatibilidad:** Chrome, Edge y Firefox (Android y escritorio). En iPhone solo con la app instalada en la pantalla de inicio (iOS 16.4+).
 
 ## 6. Despliegue
 
@@ -136,11 +188,17 @@ Configuración necesaria en el repo: **Settings → Pages → Source: GitHub Act
 ### Proxy
 - **Automático:** el workflow `worker.yml` despliega `worker.js` con `wrangler` (configuración en `wrangler.toml`) cada vez que cambia en `main`. Antes valida la sintaxis y después comprueba que el Consorcio y EMT responden. Usa el secreto del repo `CLOUDFLARE_API_TOKEN`.
 - Los secretos de EMT siguen en Cloudflare: wrangler no los toca al desplegar, y `keep_vars = true` conserva además las variables creadas desde el panel.
-- **Manual (si hiciera falta):** Cloudflare → `marquesina` → **Edit code** → pegar `worker.js` → **Deploy** (ver MANTENIMIENTO §2.3).
+- **Manual:** el worker ya no es un solo archivo (importa `logic.js` y `push.js`), así que no se puede pegar en el editor de Cloudflare. Si el despliegue automático falla, se relanza desde *Actions → Desplegar worker en Cloudflare → Run workflow* (ver MANTENIMIENTO §2.3).
 
 ### Vigilancia
 - El workflow `healthcheck.yml` se ejecuta cada hora (minuto 17) y comprueba la web publicada, el Consorcio y EMT a través del worker. Si algo falla, el workflow sale en rojo y GitHub envía un email.
 - GitHub desactiva los workflows programados tras 60 días sin actividad en el repo. Si pasa, hay que reactivarlo desde *Actions*.
+
+### Tests
+- `npm test` (Node 22, sin dependencias) ejecuta `tests/logic.test.js` y `tests/worker.test.js`.
+- `tests/fixtures/` guarda respuestas reales de EMT (parada 69) y del Consorcio (parada 06756 y posición de un 153). Si una API cambia de formato, se actualiza el fixture y se ajusta `logic.js`.
+- `worker.test.js` carga `worker.js` sustituyendo `cloudflare:workers` por una clase simulada, con almacenamiento en memoria y `fetch` falso. Comprueba el ciclo completo de un aviso, incluido descifrar la notificación como lo haría el navegador.
+- El cifrado se verificó además con una implementación independiente (Python, `cryptography`).
 
 ## 7. Mantenimiento: problemas típicos
 
@@ -152,7 +210,8 @@ Configuración necesaria en el repo: **Settings → Pages → Source: GitHub Act
 | Paradas del Consorcio sin datos o datos raros | El Consorcio cambió su API | Abrir `GetStopsTimes.php` en el navegador, ver el JSON nuevo y ajustar `crtmArrivals()` |
 | Paradas de EMT con "EMT rechazó el inicio de sesión" o "Faltan los secretos…" | Secretos del worker sin poner, mal copiados o claves revocadas | Revisar `EMT_CLIENT_ID` y `EMT_PASSKEY` en Cloudflare y la aplicación en Mobility Labs |
 | Worker devuelve 429 o deja de responder | Límite diario del plan gratuito | Ver métricas en Cloudflare; subir `cacheTtl` o el intervalo por defecto |
-| Todos los tiempos salen "Según horario" | El Consorcio cambió el formato de `codIssue` | Revisar la regla `live` en `crtmArrivals()` |
+| Todos los tiempos salen "Según horario" | El Consorcio cambió el formato de `codIssue` | Revisar la regla `live` en `parseCrtmTimes()` (`logic.js`) |
+| No llegan los avisos | Permiso de notificaciones denegado, app no instalada en iPhone, cron parado o suscripción caducada | Ver MANTENIMIENTO §7 |
 
 ### Revisiones periódicas
 - **Cada pocos meses:** comprobar que las tres APIs siguen respondiendo igual (ver las URLs de prueba).
@@ -168,7 +227,6 @@ Configuración necesaria en el repo: **Settings → Pages → Source: GitHub Act
 
 ## 9. Ideas pendientes
 
-- Notificaciones ("tu 153 está a 3 minutos").
 - Paradas compartibles por enlace.
 - Cercanías y Metro en tiempo real; incidencias de EMT; BiciMAD.
 - Límite de consultas por usuario en el worker.

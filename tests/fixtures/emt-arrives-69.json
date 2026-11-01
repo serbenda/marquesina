@@ -1,0 +1,97 @@
+{
+ "code": "00",
+ "description": " Data recovered OK  (lapsed: 675 millsecs)",
+ "datetime": "2026-11-01T10:23:33.625189",
+ "data": [
+  {
+   "Arrive": [
+    {
+     "line": "15",
+     "stop": "69",
+     "isHead": "False",
+     "destination": "SOL SEVILLA",
+     "deviation": 0,
+     "bus": 3386,
+     "geometry": {
+      "type": "Point",
+      "coordinates": [
+       -3.6917779625005056,
+       40.41961592676288
+      ]
+     },
+     "estimateArrive": 0,
+     "DistanceBus": 0,
+     "positionTypeBus": "0"
+    },
+    {
+     "line": "20",
+     "stop": "69",
+     "isHead": "False",
+     "destination": "SOL SEVILLA",
+     "deviation": 0,
+     "bus": 3459,
+     "geometry": {
+      "type": "Point",
+      "coordinates": [
+       -3.6878117289695926,
+       40.42021617419963
+      ]
+     },
+     "estimateArrive": 0,
+     "DistanceBus": 0,
+     "positionTypeBus": "0"
+    },
+    {
+     "line": "001",
+     "stop": "69",
+     "isHead": "False",
+     "destination": "MONCLOA",
+     "deviation": 0,
+     "bus": 140,
+     "geometry": {
+      "type": "Point",
+      "coordinates": [
+       -3.692955144156842,
+       40.417167439693266
+      ]
+     },
+     "estimateArrive": 51,
+     "DistanceBus": 125,
+     "positionTypeBus": "0"
+    },
+    {
+     "line": "9",
+     "stop": "69",
+     "isHead": "False",
+     "destination": "SOL SEVILLA",
+     "deviation": 0,
+     "bus": 2101,
+     "geometry": {
+      "type": "Point",
+      "coordinates": [
+       -3.686798253254864,
+       40.43182576098038
+      ]
+     },
+     "estimateArrive": 132,
+     "DistanceBus": 536,
+     "positionTypeBus": "0"
+    }
+   ],
+   "StopInfo": [
+    {
+     "stopId": "69",
+     "stopName": "Cibeles",
+     "geometry": {
+      "type": "Point",
+      "coordinates": [
+       -3.693526451984689,
+       40.419701189319774
+      ]
+     }
+    }
+   ],
+   "ExtraInfo": []
+  }
+ ]
+}

@@ -1,0 +1,25 @@
+name: Tests
+
+# Ejecuta los tests de la lógica (logic.js) y comprueba la sintaxis del worker y del service worker
+# en cada pull request y en cada push a development o main.
+
+on:
+  pull_request:
+  push:
+    branches: [development, main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Sintaxis del worker, del service worker y de la lógica
+        run: |
+          node --check worker.js
+          node --check sw.js
+          node --check logic.js
+      - name: Tests
+        run: npm test

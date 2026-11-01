@@ -6,7 +6,7 @@ name: Desplegar worker en Cloudflare
 on:
   push:
     branches: [main]
-    paths: [worker.js, wrangler.toml, .github/workflows/worker.yml]
+    paths: [worker.js, logic.js, push.js, wrangler.toml, .github/workflows/worker.yml]
   workflow_dispatch:
 
 concurrency:
@@ -33,4 +33,5 @@ jobs:
           sleep 10
           curl -fsS "https://marquesina.serbenda.workers.dev/crtm/GetStops.php?codStop=8_06756" | grep -q "MARQU"
           curl -fsS "https://marquesina.serbenda.workers.dev/emt/arrives/69" | grep -q '"code":"00"'
+          curl -fsS "https://marquesina.serbenda.workers.dev/push/key" | grep -q '"publicKey"'
           echo "Worker desplegado y respondiendo"

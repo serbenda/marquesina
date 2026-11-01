@@ -1,0 +1,9 @@
+{
+  "name": "marquesina",
+  "private": true,
+  "type": "module",
+  "description": "Tus autobuses de Madrid en el mapa, en tiempo real",
+  "scripts": {
+    "test": "node --test tests/*.test.js"
+  }
+}

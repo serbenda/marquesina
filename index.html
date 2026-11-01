@@ -61,6 +61,23 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
 .stopsub{font-size:12px;color:var(--muted);margin:0 0 4px}
 .next{color:var(--muted);font-variant-numeric:tabular-nums}
 .chip.go{color:var(--ok)} .chip.late{color:var(--muted)}
+.stale{display:block;color:var(--warn);font-weight:600}
+.check{flex-direction:row;align-items:center;gap:8px;font-size:14px;font-weight:600;color:var(--fg)}
+.check input{width:18px;height:18px;margin:0}
+.alertbox{border:1px solid var(--line);border-radius:8px;padding:10px 12px 12px;margin:0;display:flex;flex-direction:column;gap:10px}
+.alertbox legend{padding:0 4px}
+#alertFields{display:flex;flex-direction:column;gap:10px}
+#alertFields[hidden]{display:none}
+.days{display:flex;gap:6px;flex-wrap:wrap}
+.days label{display:block}
+.days input{position:absolute;opacity:0;pointer-events:none}
+.days span{display:grid;place-items:center;width:34px;height:34px;border-radius:50%;border:1px solid var(--line);font:600 13px var(--body);color:var(--muted);cursor:pointer}
+.days input:checked+span{background:var(--accent);border-color:var(--accent);color:#fff}
+.days input:focus-visible+span{outline:2px solid var(--accent);outline-offset:2px}
+.bell{color:var(--ok);font-size:13px}
+.introbtns{display:flex;flex-direction:column;gap:8px}
+.introbtns button{padding:11px 12px;font-size:14px}
+.bar .mode.off{background:var(--warn);color:#fff}
 .hero{margin:12px 0 4px;padding:12px 14px;border-radius:10px;background:var(--fg);color:var(--panel);display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:center}
 .hero .badge{min-width:46px;padding:7px 6px}
 .hero .what{min-width:0;font-size:13px;line-height:1.3}
@@ -82,6 +99,9 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
 .err{color:var(--now)}
 .note{margin:0;padding:8px max(16px,env(safe-area-inset-right,0px)) 8px max(16px,env(safe-area-inset-left,0px));border-bottom:1px solid var(--line);font-size:13px}
 
+/* Los buses se deslizan hasta su nueva posición; durante el zoom no, para que no se queden atrás */
+.leaflet-marker-icon.bus-marker{transition:transform 1.2s linear}
+.leaflet-zoom-anim .leaflet-marker-icon.bus-marker{transition:none}
 .bus-icon{display:grid;place-items:center;font:700 14px/1 var(--display);color:#fff;border:2px solid #fff;border-radius:7px;box-shadow:0 1px 4px rgba(0,0,0,.35);transition:transform .3s}
 .stop-icon{width:18px;height:18px;border-radius:50%;background:var(--stop);border:4px solid var(--panel);box-shadow:0 0 0 2px var(--stop)}
 
@@ -100,7 +120,7 @@ input,select{font:15px var(--body);color:var(--fg);background:var(--bg);border:1
   #map{flex:1 1 auto}
   .panel{flex:0 0 380px;border-top:0;border-left:1px solid var(--line);order:2}
 }
-@media (prefers-reduced-motion:reduce){.bus-icon{transition:none}}
+@media (prefers-reduced-motion:reduce){.bus-icon,.leaflet-marker-icon.bus-marker{transition:none}}
 </style>
 </head>
 <body>
@@ -116,7 +136,8 @@ input,select{font:15px var(--body);color:var(--fg);background:var(--bg);border:1
     </div>
     <button id="btnRefresh" aria-label="Actualizar ahora">↻</button>
     <button id="btnNear" title="Usar mi ubicación para cargar las paradas más cercanas">Cerca de mí</button>
-    <button id="btnFind" aria-pressed="false" title="Toca el mapa para ver las paradas cercanas">Buscar paradas</button>
+    <button id="btnFind" aria-pressed="false" title="Muestra las paradas de la zona que ves en el mapa">Buscar paradas</button>
+    <button id="btnZone" title="Ir a un municipio">Zona</button>
     <button id="btnInstall" hidden>Instalar</button>
     <button id="btnCfg">Ajustes</button>
   </div>
@@ -135,10 +156,52 @@ input,select{font:15px var(--body);color:var(--fg);background:var(--bg);border:1
     <label>Proxy (déjalo vacío para usar el de marquesina)
       <input id="fProxy" placeholder="https://marquesina.serbenda.workers.dev"></label>
     <label>Actualizar cada
-      <select id="fEvery"><option value="60">1 minuto</option><option value="120">2 minutos</option><option value="30">30 segundos</option></select></label>
+      <select id="fEvery"><option value="10">10 segundos</option><option value="15">15 segundos</option><option value="30">30 segundos</option><option value="60">1 minuto</option></select></label>
     <div class="actions">
       <button type="button" id="btnDemo">Usar demo</button>
       <button type="submit" class="primary">Guardar</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="zoneDlg">
+  <form class="dlg" id="zoneForm" method="dialog">
+    <h2>Elegir zona</h2>
+    <p>El mapa irá a ese municipio y verás todas sus paradas de autobús, Metro y Cercanías. Toca una para añadirla.</p>
+    <label>Municipio
+      <input id="fZoneSearch" list="zoneList" placeholder="Escribe: Alcobendas, Colmenar Viejo…" autocomplete="off"></label>
+    <datalist id="zoneList"></datalist>
+    <div class="actions">
+      <button type="button" id="btnZoneCancel">Cancelar</button>
+      <button type="submit" class="primary">Ir</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="introDlg">
+  <form class="dlg" id="introForm" method="dialog">
+    <div id="intro1">
+      <h2>Bienvenido a Marquesina</h2>
+      <p>Te dice cuánto le falta a tu autobús, tren o Metro, y cuándo tienes que salir de casa. Funciona en Madrid y toda la Comunidad.</p>
+      <p><b>¿Dónde coges el transporte?</b></p>
+      <div class="introbtns">
+        <button type="button" class="primary" id="introNear">Usar mi ubicación</button>
+        <button type="button" id="introZone">Elegir un municipio</button>
+        <button type="button" id="introSkip">Ver un ejemplo</button>
+      </div>
+    </div>
+    <div id="intro2" hidden>
+      <h2 id="intro2Title">Tu parada</h2>
+      <p id="intro2Sub"></p>
+      <label>¿Cómo la llamas? (por ejemplo Casa o Cole)
+        <input id="fIntroAlias" maxlength="24" autocomplete="off"></label>
+      <label>¿Cuántos minutos tardas andando hasta ella?
+        <input id="fIntroWalk" type="number" inputmode="numeric" min="0" max="60" placeholder="5"></label>
+      <p>Con esos minutos te diremos cuándo salir. Puedes cambiarlo todo luego con <b>Editar</b>.</p>
+      <div class="actions">
+        <button type="button" id="introLater">Ahora no</button>
+        <button type="submit" class="primary">Listo</button>
+      </div>
     </div>
   </form>
 </dialog>
@@ -151,8 +214,25 @@ input,select{font:15px var(--body);color:var(--fg);background:var(--bg);border:1
       <input id="fAlias" maxlength="24" autocomplete="off"></label>
     <label>Minutos andando hasta la parada
       <input id="fWalk" type="number" inputmode="numeric" min="0" max="60" placeholder="Sin indicar"></label>
-    <label style="flex-direction:row;align-items:center;gap:8px;font-size:14px;color:var(--fg)">
-      <input id="fFav" type="checkbox" style="width:18px;height:18px"> Favorita (siempre arriba)</label>
+    <label class="check"><input id="fFav" type="checkbox"> Favorita (siempre arriba)</label>
+    <fieldset class="alertbox">
+      <legend><label class="check"><input id="fAlertOn" type="checkbox"> Avisarme para salir</label></legend>
+      <div id="alertFields" hidden>
+        <p>Te llega una notificación al móvil cuando toca salir, aunque la app esté cerrada.</p>
+        <div class="days" role="group" aria-label="Días">
+          <label><input type="checkbox" value="1" checked><span>L</span></label><label><input type="checkbox" value="2" checked><span>M</span></label><label><input type="checkbox" value="3" checked><span>X</span></label><label><input type="checkbox" value="4" checked><span>J</span></label><label><input type="checkbox" value="5" checked><span>V</span></label><label><input type="checkbox" value="6"><span>S</span></label><label><input type="checkbox" value="7"><span>D</span></label>
+        </div>
+        <div class="two">
+          <label>Desde<input id="fFrom" type="time" value="07:30"></label>
+          <label>Hasta<input id="fTo" type="time" value="09:00"></label>
+        </div>
+        <div class="two">
+          <label>Línea<select id="fLine"><option value="">Cualquiera</option></select></label>
+          <label>Avisar<select id="fLead"><option value="1">Al salir</option><option value="3" selected>3 min antes</option><option value="5">5 min antes</option><option value="10">10 min antes</option></select></label>
+        </div>
+        <button type="button" id="btnTestPush">Enviar aviso de prueba</button>
+      </div>
+    </fieldset>
     <div class="actions">
       <button type="button" id="btnRemoveStop">Quitar parada</button>
       <button type="submit" class="primary">Guardar</button>
@@ -161,13 +241,18 @@ input,select{font:15px var(--body);color:var(--fg);background:var(--bg);border:1
 </dialog>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
-<script>
+<script type="module">
+import { asArray, esc, crtmCode, fmtEta, status, fmtDist, fmtAge, parseEmt, parseCrtmTimes, parseCrtmVehicles,
+         groupByLine, leaveInfo, bestLeave, parseNearest, stopNetwork } from "./logic.js";
+import { unb64url } from "./push.js";
+
 // ---------- Configuración ----------
 // Proxy propio en Cloudflare: viene puesto para que nadie tenga que configurarlo
 const PROXY = "https://marquesina.serbenda.workers.dev";
 // Paradas de ejemplo en Alcobendas (Marqués de la Valdavia) para que la web arranque en vivo
 // meta: datos propios de cada parada -> {"emt:69": {alias:"Casa", walk:5, fav:true}, "crtm:06756": {...}}
-const DEF = {stops:"", crtm:"06756, 06758", proxy:PROXY, every:60, meta:{}};
+// alerts: avisos programados por parada -> {"crtm:06756": {on, days:[1..7], from:"07:30", to:"09:00", line:"", lead:3}}
+const DEF = {stops:"", crtm:"06756, 06758", proxy:PROXY, every:15, meta:{}, alerts:{}};
 const store = {
   get(){
     let v; try{ v = {...DEF, ...JSON.parse(localStorage.getItem("marquesina")||"{}")}; }catch{ v = {...DEF}; }
@@ -176,6 +261,8 @@ const store = {
     // Si no hay ninguna parada y no se eligió la demo a propósito, arrancar con las de ejemplo
     if (!v.crtm.trim() && !v.stops.trim() && !v.demo) v.crtm = DEF.crtm;
     if (!v.meta || typeof v.meta !== "object") v.meta = {};
+    if (!v.alerts || typeof v.alerts !== "object") v.alerts = {};
+    if (![10,15,30,60].includes(+v.every)) v.every = DEF.every;   // intervalos antiguos (2 min) pasan al nuevo por defecto
     return v;
   },
   set(v){ try{ localStorage.setItem("marquesina", JSON.stringify(v)); }catch{} }
@@ -186,11 +273,12 @@ const hasCrtm = () => !!(cfg.crtm.trim() && cfg.proxy);
 const isLive  = () => !cfg.demo && (hasEmt() || hasCrtm());
 const stopKey = s => `${s.crtm ? "crtm" : "emt"}:${s.id}`;
 const metaOf  = s => cfg.meta[stopKey(s)] || {};
-const esc = t => String(t ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 // Colores por línea: estables según el número
 const PALETTE = ["#2b6cb0","#c0392b","#1f8a5b","#8e44ad","#d35400","#16808a","#b7950b","#5d6d7e"];
-const colorFor = l => PALETTE[[...String(l)].reduce((a,c)=>a+c.charCodeAt(0),0) % PALETTE.length];
+const METRO = {"1":"#30a3dc","2":"#e0292f","3":"#f5c400","4":"#943834","5":"#96bf0d","6":"#9a9999","7":"#fa8f00","8":"#e27ca6","9":"#a32d86","10":"#005aa9","11":"#009b3a","12":"#a49800","R":"#2c3b8f"};
+const colorFor = (l, mode) => (mode === "4" && METRO[l]) || PALETTE[[...String(l)].reduce((a,c)=>a+c.charCodeAt(0),0) % PALETTE.length];
+const kindOf = s => s.crtm ? stopNetwork(crtmCode(s.id)) : "EMT";
 
 // ---------- Mapa ----------
 const map = L.map("map",{zoomControl:true}).setView([40.4168,-3.7038],15);
@@ -199,9 +287,10 @@ const layerStops = L.layerGroup().addTo(map);
 const busMarkers = new Map();   // clave bus -> {marker, trail, seen}
 let fitted = false;
 
-function busIcon(line){
-  return L.divIcon({className:"", iconSize:[38,26], iconAnchor:[19,13],
-    html:`<div class="bus-icon" style="width:38px;height:26px;background:${colorFor(line)}">${line}</div>`});
+// Recuadro del bus; dx/dy lo desplazan para que no se pisen los que están en el mismo sitio
+function busIcon(line, mode, dx = 0, dy = 0){
+  return L.divIcon({className:"bus-marker", iconSize:[38,26], iconAnchor:[19,13],
+    html:`<div class="bus-icon" style="width:38px;height:26px;background:${colorFor(line, mode)};transform:translate(${dx}px,${dy}px)">${esc(line)}</div>`});
 }
 const stopIcon = L.divIcon({className:"", iconSize:[18,18], iconAnchor:[9,9], html:'<div class="stop-icon"></div>'});
 
@@ -209,116 +298,24 @@ const stopIcon = L.divIcon({className:"", iconSize:[18,18], iconAnchor:[9,9], ht
 // El worker de marquesina inicia sesión en EMT con las claves de la aplicación
 async function arrivals(stop){
   const j = await (await fetch(`${cfg.proxy.replace(/\/$/,"")}/emt/arrives/${stop}`)).json();
-  if (j.code === "ERR") throw new Error(`EMT no está disponible ahora mismo (parada ${stop}).`);
-  const d = j.data && j.data[0];
-  if (!d) throw new Error(`La parada ${stop} no devolvió datos (${j.description||"sin respuesta"}).`);
-  const si = (d.StopInfo||[])[0] || {};
-  const sc = si.geometry && si.geometry.coordinates;
-  return {
-    id: stop,
-    name: si.stopName || si.Description || `Parada ${stop}`,
-    pos: sc ? [sc[1], sc[0]] : null,
-    buses: (d.Arrive||[]).map(a=>({
-      key:`${a.line}-${a.bus}`, line:a.line, dest:a.destination,
-      eta:a.estimateArrive, dist:a.DistanceBus,
-      pos: a.geometry && a.geometry.coordinates ? [a.geometry.coordinates[1], a.geometry.coordinates[0]] : null
-    }))
-  };
+  return parseEmt(j, stop);
 }
 
 // ---------- API del Consorcio (CRTM): interurbanos y urbanos de Alcobendas, Sanse, etc. ----------
-// Da tiempos de llegada en tiempo real por parada, pero no la posición de los autobuses.
+// Da tiempos de llegada por parada (GetStopsTimes) y, aparte, la posición GPS de los buses (GetLineLocation).
 // No admite llamadas directas desde otras webs (CORS), así que pasa por el proxy (worker.js).
 const crtmUrl = (path) => `${cfg.proxy.replace(/\/$/,"")}/crtm/${path}`;
-const asArray = v => v == null ? [] : Array.isArray(v) ? v : [v];
-const crtmStopCache = new Map();
-const crtmCode = c => c.includes("_") ? c : `8_${c.padStart(5,"0")}`;
-
-async function crtmStopInfo(code){
-  if (crtmStopCache.has(code)) return crtmStopCache.get(code);
-  const j = await (await fetch(crtmUrl(`GetStops.php?codStop=${code}`))).json();
-  const s = asArray(j.stops && j.stops.Stop)[0] || {};
-  const info = {name: s.name || `Parada ${code}`, pos: s.coordinates ? [s.coordinates.latitude, s.coordinates.longitude] : null};
-  crtmStopCache.set(code, info);
-  return info;
-}
-// Recorridos de cada línea (para saber en qué itinerario y sentido está la parada). No cambian: se guardan.
-const crtmLineCache = new Map();
-async function crtmItineraries(codLine){
-  if (crtmLineCache.has(codLine)) return crtmLineCache.get(codLine);
-  const p = fetch(crtmUrl(`GetLinesInformation.php?activeItinerary=1&codLine=${encodeURIComponent(codLine)}`))
-    .then(r=>r.json())
-    .then(j=>{
-      const info = asArray(j.lines && j.lines.LineInformation)[0] || {};
-      return asArray(info.itinerary && info.itinerary.Itinerary).map(it=>({
-        cod: it.codItinerary, dir: it.direction,
-        stops: new Set(asArray(it.stops && it.stops.StopInformation).map(st=>st.codStop))
-      }));
-    })
-    .catch(()=>{ crtmLineCache.delete(codLine); return []; });
-  crtmLineCache.set(codLine, p);
-  return p;
-}
-
-// Posición GPS real de los autobuses de cada línea que pasa por la parada (GetLineLocation)
-async function crtmVehicles(code, times){
-  const lines = new Map();
-  for (const t of times) if (t.line && !lines.has(`${t.line.codLine}|${t.direction}`)) lines.set(`${t.line.codLine}|${t.direction}`, t);
-  const found = await Promise.all([...lines.values()].map(async t=>{
-    try{
-      const its = await crtmItineraries(t.line.codLine);
-      const it = its.find(i=>i.dir == t.direction && i.stops.has(code)) || its.find(i=>i.stops.has(code));
-      if (!it) return [];
-      const j = await (await fetch(crtmUrl(`GetLineLocation.php?mode=${t.line.codMode||8}&codItinerary=${encodeURIComponent(it.cod)}&codLine=${encodeURIComponent(t.line.codLine)}&codStop=${code}&direction=${it.dir}`))).json();
-      return asArray(j.vehiclesLocation && j.vehiclesLocation.VehicleLocation)
-        .filter(v=>v.coordinates && v.coordinates.latitude)
-        .map(v=>({
-          key:`v-${v.codVehicle || t.line.codLine + "-" + v.service}`,
-          line: (v.line && v.line.shortDescription) || t.line.shortDescription,
-          dest: (t.destination||"").replace(/^.*?-\s*/,"") || t.destination,
-          pos:[v.coordinates.latitude, v.coordinates.longitude]
-        }));
-    }catch{ return []; }   // si falla la posición, siguen valiendo los tiempos
-  }));
-  return found.flat();
-}
-
+// Una sola petición por parada: el worker junta datos de la parada, tiempos y posición de los buses
 async function crtmArrivals(raw){
   const code = crtmCode(raw.trim());
-  const [info, j] = await Promise.all([
-    crtmStopInfo(code),
-    fetch(crtmUrl(`GetStopsTimes.php?codStop=${code}&type=1&orderBy=2&stopTimesByIti=3`)).then(r=>r.json())
-  ]);
-  const st = j.stopTimes;
-  if (!st) throw new Error(`La parada ${raw} del Consorcio no devolvió datos.`);
-  const now = new Date(st.actualDate).getTime();
-  const vehicles = await crtmVehicles(code, asArray(st.times && st.times.Time));
-  return {
-    id: code.replace(/^8_/,""), name: info.name, pos: info.pos, crtm: true, vehicles,
-    buses: (()=>{
-      const perLine = {};
-      return asArray(st.times && st.times.Time).map((t,i)=>({
-        key:`c-${code}-${t.line.shortDescription}-${i}`, line:t.line.shortDescription,
-        dest:(t.destination||"").replace(/^.*?-\s*/,"") || t.destination,
-        eta:Math.max(0, Math.round((new Date(t.time).getTime() - now)/1000)), dist:null, pos:null,
-        // Los tiempos de horario llevan un código con el nombre de la línea; los del GPS, el del vehículo
-        live: !(t.codIssue||"").startsWith(t.line.codLine)
-      })).sort((a,b)=>a.eta-b.eta)
-        .filter(b=> b.eta <= 90*60 && (perLine[b.line] = (perLine[b.line]||0) + 1) <= 2);
-    })()
-  };
+  const j = await (await fetch(`${cfg.proxy.replace(/\/$/,"")}/crtm/stop/${code}`)).json();
+  const {buses} = parseCrtmTimes(j, code);
+  const name = (j.stop && j.stop.name) || `Parada ${code.replace(/^\d+_/,"")}`;
+  return {id: code.replace(/^8_/,""), name, pos: j.stop && j.stop.pos, crtm: true, vehicles: j.vehicles || [], buses};
 }
-async function crtmNearest(lat, lng){
-  const j = await (await fetch(crtmUrl(`GetNearestStopsByLocation.php?latitude=${lat.toFixed(5)}&longitude=${lng.toFixed(5)}&mode=&method=1&precision=350`))).json();
-  const seen = new Set();
-  return asArray(j.stops && j.stops.Stop)
-    .filter(s=>/^[68]_/.test(s.codStop) && !seen.has(s.codStop) && seen.add(s.codStop))
-    .map(s=>({
-      net: s.codStop.startsWith("6_") ? "emt" : "crtm",     // 6_ = EMT Madrid, 8_ = Consorcio
-      code: s.codStop.startsWith("6_") ? s.codStop.slice(2) : s.shortCodStop,
-      name:s.name, pos:[s.coordinates.latitude, s.coordinates.longitude],
-      lines:asArray(s.lines && s.lines.Line).map(l=>l.shortDescription)
-    }));
+async function crtmNearest(lat, lng, radius = 350){
+  const j = await (await fetch(crtmUrl(`GetNearestStopsByLocation.php?latitude=${lat.toFixed(5)}&longitude=${lng.toFixed(5)}&mode=&method=1&precision=${Math.round(radius)}`))).json();
+  return parseNearest(j);
 }
 
 // ---------- Demo: buses simulados que se acercan a la parada ----------
@@ -347,35 +344,6 @@ function demoArrivals(){
 let last = [];       // datos de la última consulta
 let fetchedAt = 0;
 
-function fmtEta(s){
-  if (s >= 999999) return {txt:"+20", unit:"min"};
-  if (s < 60) return {txt:"<1", unit:"min"};
-  return {txt:String(Math.floor(s/60)), unit:"min"};
-}
-function status(s){ return s < 90 ? ["now","Llegando"] : s < 300 ? ["near","Cerca"] : ["far","En camino"]; }
-function fmtDist(m){ return m == null ? "" : m >= 1000 ? (m/1000).toFixed(1).replace(".",",")+" km" : m+" m"; }
-
-// Agrupa las llegadas de una parada por línea y destino: una fila por línea con sus próximos pasos
-function groupByLine(buses, elapsed){
-  const groups = new Map();
-  for (const b of buses.slice().sort((x,y)=>x.eta-y.eta)){
-    const eta = Math.max(0, b.eta - elapsed);
-    const k = `${b.line}|${b.dest}`;
-    if (!groups.has(k)) groups.set(k, {line:b.line, dest:b.dest, items:[]});
-    groups.get(k).items.push({...b, eta});
-  }
-  return [...groups.values()];
-}
-
-// Cuándo salir: el primer bus al que da tiempo llegar andando
-function leaveInfo(items, walkMin){
-  if (!walkMin) return null;
-  const walk = walkMin*60;
-  const target = items.find(b => b.eta >= walk - 30);   // 30 s de margen
-  if (!target) return {late:true};
-  return {bus:target, leave: target.eta - walk, missedFirst: target !== items[0]};
-}
-
 function chipFor(g, walkMin){
   const first = g.items[0];
   const li = leaveInfo(g.items, walkMin);
@@ -387,23 +355,14 @@ function chipFor(g, walkMin){
 }
 
 // Tarjeta principal: lo más urgente entre las paradas con minutos andando (favoritas primero)
-function heroHtml(stops, elapsed){
-  let best = null;
-  for (const s of stops){
-    if (s.error) continue;
-    const m = metaOf(s); if (!m.walk) continue;
-    for (const g of groupByLine(s.buses, elapsed)){
-      const li = leaveInfo(g.items, m.walk);
-      if (!li || li.late) continue;
-      const score = (m.fav ? 0 : 1e6) + li.leave;
-      if (!best || score < best.score) best = {score, s, g, li, m};
-    }
-  }
+const elapsedOf = s => (Date.now() - (s.at || fetchedAt)) / 1000;
+function heroHtml(stops){
+  const best = bestLeave(stops.map(s=>({stop:s, meta:metaOf(s), elapsed:elapsedOf(s)})));
   if (!best) return "";
-  const {s, g, li, m} = best;
+  const {stop:s, group:g, li, meta:m} = best;
   const now = li.leave <= 60;
   return `<div class="hero${now ? " now" : ""}">
-    <div class="badge" style="background:${colorFor(g.line)}">${esc(g.line)}</div>
+    <div class="badge" style="background:${colorFor(g.line, g.mode)}">${esc(g.line)}</div>
     <div class="what"><b>${esc(m.alias || s.name)}</b>${esc(g.dest)} · pasa en ${fmtEta(li.bus.eta).txt} min</div>
     <div class="when">${now ? "¡Ya!" : Math.floor(li.leave/60) + "′"}<small>${now ? "sal ahora" : "para salir"}</small></div>
   </div>`;
@@ -412,25 +371,25 @@ function heroHtml(stops, elapsed){
 function renderList(){
   const el = document.getElementById("list");
   if (!last.length){ el.innerHTML = '<p class="empty">Añade una parada con Cerca de mí, Buscar paradas o Ajustes.</p>'; return; }
-  const elapsed = (Date.now()-fetchedAt)/1000;
   // favoritas primero, el resto en el orden en que se añadieron
   const ordered = last.map((s,i)=>({s,i})).sort((a,b)=>((metaOf(b.s).fav?1:0)-(metaOf(a.s).fav?1:0)) || a.i-b.i).map(x=>x.s);
-  el.innerHTML = (isLive() ? heroHtml(ordered, elapsed) : "") + ordered.map(s=>{
+  el.innerHTML = (isLive() ? heroHtml(ordered) : "") + ordered.map(s=>{
     if (s.error) return `<p class="err">${esc(s.error)}</p>`;
     const m = metaOf(s);
-    const rows = groupByLine(s.buses, elapsed).map(g=>{
+    const rows = groupByLine(s.buses, elapsedOf(s)).map(g=>{
       const first = g.items[0], e = fmtEta(first.eta);
       const more = g.items.slice(1,3).map(b=>fmtEta(b.eta).txt + "′").join(" · ");
-      const detail = s.crtm ? (first.live ? "En directo (GPS)" : "Según horario") : (fmtDist(first.dist) || "sin posición");
+      const detail = s.crtm ? (first.mode === "4" ? "Próximo tren" : first.live ? "En directo (GPS)" : "Según horario") : (fmtDist(first.dist) || "sin posición");
       return `<div class="row" data-key="${esc(first.key)}" data-line="${esc(g.line)}" data-stop="${esc(s.id)}">
-        <div class="badge" style="background:${colorFor(g.line)}">${esc(g.line)}</div>
+        <div class="badge" style="background:${colorFor(g.line, g.mode)}">${esc(g.line)}</div>
         <div class="dest"><b>${esc(g.dest)}</b><small>${detail}${more ? ` · <span class="next">luego ${more}</span>` : ""}</small></div>
         <div class="eta"><strong>${e.txt}<small style="font-size:13px"> ${e.unit}</small></strong>${chipFor(g, m.walk)}</div>
       </div>`;
     }).join("") || '<p class="empty">No hay autobuses previstos ahora mismo.</p>';
-    const sub = [m.alias ? esc(s.name) : "", s.crtm ? `Consorcio ${esc(s.id)}` : `EMT ${esc(s.id)}`, m.walk ? `${m.walk} min andando` : ""].filter(Boolean).join(" · ");
+    const sub = [m.alias ? esc(s.name) : "", `${kindOf(s)} ${esc(String(s.id).replace(/^\d+_/,""))}`, m.walk ? `${m.walk} min andando` : ""].filter(Boolean).join(" · ")
+      + (s.stale ? `<span class="stale">Sin conexión · datos ${fmtAge(Date.now() - s.at)}</span>` : "");
     const editBtn = s.demo ? "" : `<button class="edit" data-edit="${esc(stopKey(s))}" data-name="${esc(s.name)}">Editar</button>`;
-    return `<div class="stophead">${m.fav ? '<span class="star" aria-label="Favorita">★</span>' : ""}<span class="alias">${esc(m.alias || s.name)}</span>${editBtn}</div>
+    return `<div class="stophead">${m.fav ? '<span class="star" aria-label="Favorita">★</span>' : ""}<span class="alias">${esc(m.alias || s.name)}</span>${cfg.alerts[stopKey(s)]?.on ? '<span class="bell" title="Aviso activado" aria-label="Aviso activado">🔔</span>' : ""}${editBtn}</div>
       <p class="stopsub">${sub}</p>${rows}`;
   }).join("") + (isLive() ? "" : '<p class="empty">Esto es una demo. Pulsa <b>Cerca de mí</b> o <b>Buscar paradas</b> para ver los autobuses reales de tu parada.</p>');
 }
@@ -445,7 +404,7 @@ function renderMap(){
       if (s.crtm){
         // El Consorcio no da posiciones: mostramos las próximas llegadas junto a la parada
         const next = s.buses.slice().sort((a,b)=>a.eta-b.eta).slice(0,3)
-          .map(b=>`<b style="color:${colorFor(b.line)}">${b.line}</b> ${fmtEta(b.eta).txt}′`).join(" · ");
+          .map(b=>`<b style="color:${colorFor(b.line, b.mode)}">${esc(b.line)}</b> ${fmtEta(b.eta).txt}′`).join(" · ");
         mk.bindTooltip(next || esc(metaOf(s).alias || s.name),{permanent:true,direction:"top",offset:[0,-10]});
         mk.bindPopup(`<b>${s.name}</b><br>Parada ${s.id}`);
       } else mk.bindTooltip(s.name);
@@ -455,9 +414,9 @@ function renderMap(){
       seen.add(b.key); bounds.push(b.pos);
       let m = busMarkers.get(b.key);
       if (!m){
-        const marker = L.marker(b.pos,{icon:busIcon(b.line)}).addTo(map);
-        const trail = L.polyline([b.pos],{color:colorFor(b.line),weight:3,opacity:.55,dashArray:"4 6"}).addTo(map);
-        m = {marker, trail}; busMarkers.set(b.key, m);
+        const marker = L.marker(b.pos,{icon:busIcon(b.line, b.mode)}).addTo(map);
+        const trail = L.polyline([b.pos],{color:colorFor(b.line, b.mode),weight:3,opacity:.55,dashArray:"4 6"}).addTo(map);
+        m = {marker, trail, line:b.line, mode:b.mode, off:"0,0"}; busMarkers.set(b.key, m);
       } else {
         m.marker.setLatLng(b.pos);
         m.trail.addLatLng(b.pos);
@@ -468,8 +427,27 @@ function renderMap(){
     }
   }
   for (const [k,m] of busMarkers) if (!seen.has(k)){ map.removeLayer(m.marker); map.removeLayer(m.trail); busMarkers.delete(k); }
-  if (!fitted && bounds.length){ map.fitBounds(bounds,{padding:[40,40],maxZoom:16}); fitted = true; }
+  // Encuadre: tus paradas y los buses que están a menos de 2,5 km de ellas (no los que pasan lejos)
+  const stopPos = last.filter(s=>!s.error && s.pos).map(s=>s.pos);
+  const frame = stopPos.length ? [...stopPos, ...bounds.filter(p => stopPos.some(sp => map.distance(p, sp) < 2500))] : bounds;
+  if (!fitted && frame.length){ map.fitBounds(frame,{padding:[40,40],maxZoom:16}); fitted = true; }
+  spreadMarkers();
 }
+
+// Si varios recuadros caen casi en el mismo punto de la pantalla, se abren en abanico para que se lean todos
+function spreadMarkers(){
+  const placed = [];
+  const list = [...busMarkers.values()].sort((a,b)=>a.marker.getLatLng().lat - b.marker.getLatLng().lat);
+  for (const m of list){
+    const p = map.latLngToLayerPoint(m.marker.getLatLng());
+    let dx = 0, dy = 0, n = 0;
+    while (n < 8 && placed.some(q => Math.abs(q.x - (p.x+dx)) < 34 && Math.abs(q.y - (p.y+dy)) < 22)){ n++; dx = 22*n; dy = -14*n; }
+    placed.push({x:p.x+dx, y:p.y+dy});
+    const off = `${dx},${dy}`;
+    if (m.off !== off){ m.marker.setIcon(busIcon(m.line, m.mode, dx, dy)); m.off = off; }
+  }
+}
+map.on("zoomend", spreadMarkers);
 
 document.getElementById("list").addEventListener("click", e=>{
   const row = e.target.closest(".row"); if (!row) return;
@@ -485,27 +463,45 @@ document.getElementById("list").addEventListener("click", e=>{
 });
 
 // ---------- Ciclo de actualización ----------
-let nextAt = 0, refreshing = false;
+let nextAt = 0, refreshing = null, pending = false;
 async function refresh(){
-  // Una sola consulta a la vez: si tarda, no se lanzan más cada segundo
-  if (refreshing) return;
-  refreshing = true;
+  // Una sola consulta a la vez: si llega otra petición mientras tanto (por ejemplo, al añadir una parada),
+  // se hace justo después en lugar de perderse
+  if (refreshing){ pending = true; return refreshing; }
   nextAt = Date.now() + cfg.every*1000;
-  try { await doRefresh(); } finally { refreshing = false; }
+  refreshing = (async () => {
+    try { await doRefresh(); }
+    finally {
+      refreshing = null;
+      if (pending){ pending = false; await refresh(); }
+    }
+  })();
+  return refreshing;
 }
 async function doRefresh(){
   const stops = cfg.stops.split(/[,\s]+/).filter(Boolean);
   document.getElementById("mode").textContent = isLive() ? "En vivo" : "Demo";
   document.getElementById("mode").classList.toggle("live", isLive());
-  if (!isLive()){ last = demoArrivals(); }
+  if (!isLive()){ last = demoArrivals().map(s=>({...s, at:Date.now()})); }
   else {
     const jobs = [];
-    if (hasEmt()) jobs.push(...stops.map(s=>arrivals(s).catch(err=>({id:s, error:
+    if (hasEmt()) jobs.push(...stops.map(s=>arrivals(s).catch(err=>({id:String(s), error:
       err instanceof TypeError ? `No se pudo conectar con EMT (parada ${s}).` : err.message}))));
-    if (hasCrtm()) jobs.push(...cfg.crtm.split(/[,\s]+/).filter(Boolean).map(s=>crtmArrivals(s).catch(err=>({id:s, error:
-      err instanceof TypeError ? `No se pudo conectar con el Consorcio a través del proxy (parada ${s}). Revisa la URL del proxy en Ajustes.` : err.message}))));
-    last = await Promise.all(jobs);
+    if (hasCrtm()) jobs.push(...cfg.crtm.split(/[,\s]+/).filter(Boolean).map(s=>crtmArrivals(s).catch(err=>({id:crtmCode(s).replace(/^8_/,""), crtm:true, error:
+      err instanceof TypeError ? `No se pudo conectar con el Consorcio (parada ${s}).` : err.message}))));
+    // Si una parada falla, se mantienen sus últimos datos (hasta 15 min) marcados como antiguos
+    const prev = new Map(last.filter(s=>!s.error && !s.demo).map(s=>[stopKey(s), s]));
+    const now = Date.now();
+    last = (await Promise.all(jobs)).map(r=>{
+      if (!r.error) return {...r, at: now};
+      const p = prev.get(stopKey(r));
+      return p && now - p.at < 15*60000 ? {...p, stale:true} : r;
+    });
   }
+  const allStale = isLive() && last.length && last.every(s=>s.stale || s.error);
+  document.getElementById("mode").textContent = !isLive() ? "Demo" : allStale ? "Sin conexión" : "En vivo";
+  document.getElementById("mode").classList.toggle("live", isLive() && !allStale);
+  document.getElementById("mode").classList.toggle("off", !!allStale);
   fetchedAt = Date.now();
   nextAt = fetchedAt + cfg.every*1000;
   renderMap(); renderList();
@@ -514,10 +510,10 @@ function tick(){
   const left = Math.max(0, (nextAt-Date.now())/1000);
   document.getElementById("ringTxt").textContent = Math.ceil(left);
   document.getElementById("ringFg").setAttribute("stroke-dashoffset", 75.4*(1-left/cfg.every));
-  if (left <= 0) refresh();
+  if (left <= 0 && !document.hidden) refresh();   // con la app en segundo plano no se consulta nada
   if (fetchedAt) renderList(); // cuenta atrás de minutos entre consultas
   // en demo, mover los buses suavemente cada segundo
-  if (!isLive() && fetchedAt){ last = demoArrivals(); fetchedAt = Date.now(); renderMap(); }
+  if (!isLive() && fetchedAt){ last = demoArrivals().map(s=>({...s, at:Date.now()})); fetchedAt = Date.now(); renderMap(); }
 }
 setInterval(tick, 1000);
 document.getElementById("btnRefresh").onclick = refresh;
@@ -549,8 +545,18 @@ document.getElementById("list").addEventListener("click", e=>{
   const m = cfg.meta[editing] || {};
   const [net, id] = editing.split(":");
   document.getElementById("stopDlgTitle").textContent = m.alias || b.dataset.name;
-  document.getElementById("stopDlgSub").textContent = `${b.dataset.name} · ${net === "emt" ? "EMT Madrid" : "Consorcio"} ${id}`;
+  document.getElementById("stopDlgSub").textContent = `${b.dataset.name} · ${net === "emt" ? "EMT" : stopNetwork(crtmCode(id))} ${id.replace(/^\d+_/,"")}`;
   fAlias.value = m.alias || ""; fWalk.value = m.walk || ""; fFav.checked = !!m.fav;
+  const al = cfg.alerts[editing] || {};
+  fAlertOn.checked = !!al.on;
+  alertFields.hidden = !al.on;
+  document.querySelectorAll(".days input").forEach(c => c.checked = (al.days || [1,2,3,4,5]).includes(+c.value));
+  fFrom.value = al.from || "07:30"; fTo.value = al.to || "09:00"; fLead.value = String(al.lead || 3);
+  const st = last.find(x => stopKey(x) === editing);
+  const lines = st ? [...new Set(st.buses.map(b => b.line))].sort((a,b)=>a.localeCompare(b,"es",{numeric:true})) : [];
+  if (al.line && !lines.includes(al.line)) lines.push(al.line);
+  fLine.innerHTML = '<option value="">Cualquiera</option>' + lines.map(l => `<option value="${esc(l)}">${esc(l)}</option>`).join("");
+  fLine.value = al.line || "";
   stopDlg.showModal();
 });
 document.getElementById("stopForm").addEventListener("submit", ()=>{
@@ -559,47 +565,88 @@ document.getElementById("stopForm").addEventListener("submit", ()=>{
   const m = {alias: fAlias.value.trim(), walk, fav: fFav.checked};
   const meta = {...cfg.meta};
   if (m.alias || m.walk || m.fav) meta[editing] = m; else delete meta[editing];
-  cfg = {...cfg, meta}; store.set(cfg); renderList();
+  const alerts = {...cfg.alerts};
+  if (fAlertOn.checked) alerts[editing] = readAlertForm(); else delete alerts[editing];
+  cfg = {...cfg, meta, alerts}; store.set(cfg); renderList();
+  syncAlerts().catch(err => showNote(err.message));
 });
+fAlertOn.onchange = () => { alertFields.hidden = !fAlertOn.checked; };
+function readAlertForm(){
+  return { on: true, days: [...document.querySelectorAll(".days input:checked")].map(c => +c.value),
+           from: fFrom.value || "07:30", to: fTo.value || "09:00", line: fLine.value, lead: +fLead.value || 3 };
+}
 document.getElementById("btnRemoveStop").onclick = ()=>{
   if (!editing) return;
   const [net, id] = editing.split(":");
   const field = net === "emt" ? "stops" : "crtm";
   const list = cfg[field].split(/[,\s]+/).filter(x => x && x !== id && x.padStart(5,"0") !== id);
   const meta = {...cfg.meta}; delete meta[editing];
-  cfg = {...cfg, [field]: list.join(", "), meta}; store.set(cfg);
+  const alerts = {...cfg.alerts}; delete alerts[editing];
+  cfg = {...cfg, [field]: list.join(", "), meta, alerts}; store.set(cfg);
   stopDlg.close(); fitted = false; refresh();
+  syncAlerts().catch(() => {});
 };
 
-// ---------- Buscar paradas del Consorcio tocando el mapa ----------
+// ---------- Buscar paradas: muestra las paradas de la zona que se ve en el mapa ----------
+const findRenderer = L.canvas({padding:0.3});
 const layerFind = L.layerGroup().addTo(map);
 const btnFind = document.getElementById("btnFind");
-let finding = false;
+const KIND_COLOR = {"EMT":"#2b6cb0","Interurbano":"#1f8a5b","Urbano":"#16808a","Metro":"#d6402b","Cercanías":"#8e44ad"};
+let finding = false, findSeq = 0;
 function setFinding(on){
   finding = on; btnFind.setAttribute("aria-pressed", on);
   btnFind.classList.toggle("primary", on);
-  btnFind.textContent = on ? "Toca el mapa" : "Buscar paradas";
-  if (!on) layerFind.clearLayers();
+  btnFind.textContent = on ? "Ocultar paradas" : "Buscar paradas";
+  if (on) loadVisibleStops(); else layerFind.clearLayers();
 }
-btnFind.onclick = ()=>{
-  if (!finding) map.setView([40.545,-3.635], 15);   // Alcobendas / Sanse
-  setFinding(!finding);
-};
-map.on("click", async e=>{
-  if (!finding) return;
-  layerFind.clearLayers();
+btnFind.onclick = ()=> setFinding(!finding);
+map.on("moveend", ()=>{ if (finding) loadVisibleStops(); });
+map.on("click", e=>{ if (finding && map.getZoom() < 15) map.setView(e.latlng, 15); });
+
+async function loadVisibleStops(){
+  if (map.getZoom() < 15){ layerFind.clearLayers(); showNote("Acerca el mapa (o toca una zona) para ver sus paradas."); return; }
+  const seq = ++findSeq, c = map.getCenter();
+  const radius = Math.min(1500, map.distance(c, map.getBounds().getNorthEast()));
   try{
-    const found = await crtmNearest(e.latlng.lat, e.latlng.lng);
-    if (!found.length){ showNote("No hay paradas de autobús cerca de ese punto."); return; }
+    const found = await crtmNearest(c.lat, c.lng, radius);
+    if (seq !== findSeq || !finding) return;   // el mapa se movió mientras tanto
+    layerFind.clearLayers();
+    if (!found.length){ showNote("No hay paradas en esta zona."); return; }
     for (const s of found){
       const added = (s.net==="emt" ? cfg.stops : cfg.crtm).split(/[,\s]+/).includes(s.code);
-      L.circleMarker(s.pos,{radius:8,color:"#fff",weight:2,fillColor:colorFor(s.code),fillOpacity:1})
-        .bindPopup(`<b>${s.name}</b><br>${s.net==="emt"?"EMT Madrid":"Consorcio"} · parada ${s.code}<br>Líneas: ${s.lines.join(", ")}<br>
-          <button data-add="${s.code}" data-net="${s.net}" style="margin-top:6px"${added?" disabled":""}>${added?"Ya añadida":"Añadir a mis paradas"}</button>`)
+      L.circleMarker(s.pos,{renderer:findRenderer, radius:7, color:"#fff", weight:2, fillColor:KIND_COLOR[s.kind]||"#5d6d7e", fillOpacity:1})
+        .bindPopup(`<b>${esc(s.name)}</b><br>${esc(s.kind)} · ${esc(String(s.code).replace(/^\d+_/,""))}<br>${s.lines.length ? "Líneas: " + esc(s.lines.join(", ")) + "<br>" : ""}
+          <button data-add="${esc(s.code)}" data-net="${s.net}" style="margin-top:6px"${added?" disabled":""}>${added?"Ya añadida":"Añadir a mis paradas"}</button>`)
         .addTo(layerFind);
     }
-  }catch(err){ showNote("No se pudo consultar el Consorcio. Revisa la URL del proxy en Ajustes."); }
+  }catch{ if (seq === findSeq) showNote("No se pudieron cargar las paradas. Inténtalo de nuevo en un momento."); }
+}
+
+// ---------- Zonas: ir a un municipio ----------
+// Centro aproximado de cada municipio; desde ahí se cargan las paradas de la zona visible
+const ZONES = {
+  "Madrid (Centro)":[40.4168,-3.7038], "Madrid (Chamartín)":[40.4722,-3.6829], "Madrid (Moncloa)":[40.4351,-3.7193], "Madrid (Vallecas)":[40.3796,-3.6213], "Madrid (Carabanchel)":[40.3833,-3.7392], "Madrid (Hortaleza)":[40.4697,-3.6417], "Madrid (Las Tablas · Sanchinarro)":[40.4977,-3.6607], "Madrid (Barajas)":[40.4731,-3.5794],
+  "Alcobendas":[40.5400,-3.6400], "San Sebastián de los Reyes":[40.5474,-3.6260], "La Moraleja":[40.5130,-3.6400], "Colmenar Viejo":[40.6590,-3.7676], "Tres Cantos":[40.6008,-3.7097], "Algete":[40.5974,-3.4977], "San Agustín del Guadalix":[40.6786,-3.6169], "Paracuellos de Jarama":[40.5047,-3.5280],
+  "Alcalá de Henares":[40.4818,-3.3644], "Torrejón de Ardoz":[40.4555,-3.4697], "Coslada":[40.4238,-3.5613], "San Fernando de Henares":[40.4251,-3.5352], "Rivas-Vaciamadrid":[40.3333,-3.5167], "Arganda del Rey":[40.3008,-3.4382], "Mejorada del Campo":[40.3956,-3.4887], "Meco":[40.5524,-3.3283], "Daganzo de Arriba":[40.5422,-3.4553],
+  "Getafe":[40.3057,-3.7329], "Leganés":[40.3272,-3.7635], "Alcorcón":[40.3458,-3.8249], "Móstoles":[40.3223,-3.8650], "Fuenlabrada":[40.2842,-3.7942], "Parla":[40.2365,-3.7675], "Pinto":[40.2416,-3.6994], "Valdemoro":[40.1908,-3.6739], "Aranjuez":[40.0318,-3.6043], "Ciempozuelos":[40.1593,-3.6199], "Humanes de Madrid":[40.2600,-3.8283], "Navalcarnero":[40.2894,-4.0136], "Arroyomolinos":[40.2667,-3.9167], "Villaviciosa de Odón":[40.3577,-3.9008],
+  "Pozuelo de Alarcón":[40.4351,-3.8138], "Majadahonda":[40.4733,-3.8722], "Las Rozas de Madrid":[40.4929,-3.8737], "Boadilla del Monte":[40.4050,-3.8780], "Villanueva de la Cañada":[40.4467,-4.0042], "Torrelodones":[40.5764,-3.9285], "Galapagar":[40.5780,-4.0028], "Collado Villalba":[40.6347,-4.0050], "Hoyo de Manzanares":[40.6334,-3.9119],
+  "San Lorenzo de El Escorial":[40.5913,-4.1474], "El Escorial":[40.5826,-4.1290], "Guadarrama":[40.6726,-4.0889], "Cercedilla":[40.7408,-4.0569], "Moralzarzal":[40.6747,-3.9706], "Manzanares el Real":[40.7262,-3.8612], "Soto del Real":[40.7543,-3.7839], "Miraflores de la Sierra":[40.8133,-3.7650], "Buitrago del Lozoya":[40.9908,-3.6370],
+};
+const zoneDlg = document.getElementById("zoneDlg");
+document.getElementById("zoneList").innerHTML = Object.keys(ZONES).sort((a,b)=>a.localeCompare(b,"es")).map(z=>`<option value="${esc(z)}"></option>`).join("");
+const openZones = ()=>{ fZoneSearch.value = ""; zoneDlg.showModal(); fZoneSearch.focus(); };
+document.getElementById("btnZone").onclick = openZones;
+document.getElementById("btnZoneCancel").onclick = ()=> zoneDlg.close();
+document.getElementById("zoneForm").addEventListener("submit", e=>{
+  const q = fZoneSearch.value.trim().toLowerCase();
+  const norm = t => t.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"");
+  const name = Object.keys(ZONES).find(z => norm(z) === norm(q)) || Object.keys(ZONES).find(z => norm(z).includes(norm(q)));
+  if (!q || !name){ e.preventDefault(); showNote("No encuentro ese municipio. Elige uno de la lista o mueve el mapa hasta él."); return; }
+  map.setView(ZONES[name], 15);
+  if (finding) loadVisibleStops(); else setFinding(true);
+  showNote(`${name}: toca una parada para añadirla.`);
 });
+
 document.addEventListener("click", e=>{
   const code = e.target.dataset && e.target.dataset.add; if (!code) return;
   const field = e.target.dataset.net === "emt" ? "stops" : "crtm";
@@ -609,27 +656,111 @@ document.addEventListener("click", e=>{
   e.target.textContent = "Añadida"; e.target.disabled = true;
   refresh();
 });
-// ---------- Cerca de mí: paradas más cercanas a la ubicación del usuario ----------
-document.getElementById("btnNear").onclick = ()=>{
+// ---------- Cerca de mí ----------
+// Si aún no tienes paradas propias, carga las 3 más cercanas. Si ya tienes, enseña las de alrededor para añadirlas.
+const hasOwnStops = () => Object.keys(cfg.meta).length > 0 || (cfg.stops.trim() !== "" || cfg.crtm.trim() !== DEF.crtm);
+function nearMe(onLoaded){
   if (!navigator.geolocation){ showNote("Este navegador no permite usar la ubicación."); return; }
   showNote("Buscando tu ubicación…");
   navigator.geolocation.getCurrentPosition(async p=>{
     try{
       const {latitude:lat, longitude:lng} = p.coords;
-      const found = (await crtmNearest(lat, lng))
+      if (hasOwnStops() && !onLoaded){
+        map.setView([lat,lng], 16);
+        if (finding) loadVisibleStops(); else setFinding(true);
+        showNote("Estas son las paradas de tu alrededor: toca una para añadirla.");
+        return;
+      }
+      const found = (await crtmNearest(lat, lng, 600))
         .sort((a,b)=>map.distance([lat,lng],a.pos)-map.distance([lat,lng],b.pos)).slice(0,3);
-      if (!found.length){ showNote("No hay paradas de autobús cerca de ti."); return; }
+      if (!found.length){ showNote("No hay paradas cerca de ti."); return; }
       const pick = net => found.filter(s=>s.net===net).map(s=>s.code).join(", ");
       cfg = {...cfg, demo:false, stops:pick("emt"), crtm:pick("crtm")}; store.set(cfg);
-      fitted = false; showNote(`Cargadas ${found.length} paradas cerca de ti.`); refresh();
-    }catch{ showNote("No se pudo consultar el Consorcio. Inténtalo de nuevo en un momento."); }
+      fitted = false; showNote(`Cargadas ${found.length} paradas cerca de ti.`); await refresh();
+      if (onLoaded) onLoaded(found[0]);
+    }catch{ showNote("No se pudieron consultar las paradas. Inténtalo de nuevo en un momento."); }
   }, ()=> showNote("No se pudo obtener tu ubicación. Revisa el permiso de ubicación del navegador."),
   {enableHighAccuracy:true, timeout:10000});
+}
+document.getElementById("btnNear").onclick = ()=> nearMe();
+
+// ---------- Bienvenida (solo la primera vez) ----------
+const introDlg = document.getElementById("introDlg");
+let introStop = null;
+const introDone = ()=>{ try{ localStorage.setItem("marquesina-intro", "1"); }catch{} };
+function introStep2(stop){
+  introStop = stop;
+  intro1.hidden = true; intro2.hidden = false;
+  intro2Title.textContent = stop.name;
+  intro2Sub.textContent = `${stop.kind} · ${String(stop.code).replace(/^\d+_/,"")}${stop.lines.length ? " · líneas " + stop.lines.slice(0,6).join(", ") : ""}`;
+  fIntroAlias.value = ""; fIntroWalk.value = "";
+  if (!introDlg.open) introDlg.showModal();
+}
+document.getElementById("introNear").onclick = ()=>{ introDlg.close(); nearMe(introStep2); };
+document.getElementById("introZone").onclick = ()=>{ introDlg.close(); introDone(); openZones(); };
+document.getElementById("introSkip").onclick = ()=>{ introDlg.close(); introDone(); };
+document.getElementById("introLater").onclick = ()=>{ introDlg.close(); introDone(); };
+document.getElementById("introForm").addEventListener("submit", ()=>{
+  introDone();
+  if (!introStop) return;
+  const key = `${introStop.net}:${introStop.net === "emt" ? introStop.code : String(introStop.code).replace(/^8_/,"")}`;
+  const walk = Math.max(0, Math.min(60, parseInt(fIntroWalk.value,10) || 0));
+  const alias = fIntroAlias.value.trim();
+  if (alias || walk) cfg = {...cfg, meta:{...cfg.meta, [key]:{alias, walk, fav:true}}};
+  store.set(cfg); renderList();
+});
+const firstVisit = (()=>{ try{ return !localStorage.getItem("marquesina") && !localStorage.getItem("marquesina-intro"); }catch{ return false; } })();
+
+// ---------- Avisos programados (Web Push) ----------
+// El navegador se suscribe con la clave del worker; el worker revisa los avisos cada minuto y envía la notificación.
+const pushUrl = path => `${cfg.proxy.replace(/\/$/,"")}/push/${path}`;
+const pushSupported = () => "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
+
+async function getSubscription(create){
+  if (!pushSupported()){
+    throw new Error(isIOS && !standalone
+      ? "En iPhone, instala primero la app (Compartir → Añadir a pantalla de inicio) y activa el aviso desde ahí."
+      : "Este navegador no permite notificaciones.");
+  }
+  const reg = await navigator.serviceWorker.ready;
+  let sub = await reg.pushManager.getSubscription();
+  if (sub || !create) return sub;
+  const perm = await Notification.requestPermission();
+  if (perm !== "granted") throw new Error("Sin permiso de notificaciones no se pueden enviar avisos. Actívalo en los ajustes del navegador.");
+  const {publicKey} = await (await fetch(pushUrl("key"))).json();
+  return reg.pushManager.subscribe({userVisibleOnly: true, applicationServerKey: unb64url(publicKey)});
+}
+
+// Envía al worker la lista completa de avisos (o borra la suscripción si no queda ninguno)
+async function syncAlerts(){
+  const list = Object.entries(cfg.alerts).filter(([,a]) => a.on).map(([key, a]) => {
+    const [net, stop] = key.split(":");
+    const m = cfg.meta[key] || {};
+    return {id: key, net, stop, alias: m.alias || "", walk: m.walk || 0, line: a.line, lead: a.lead, days: a.days, from: a.from, to: a.to};
+  });
+  if (list.some(a => !a.walk)) showNote("Indica los minutos andando de la parada: sin ellos el aviso no sabe cuándo tienes que salir.");
+  const sub = await getSubscription(list.length > 0);
+  if (!sub) return;
+  const path = list.length ? "subscribe" : "unsubscribe";
+  const r = await fetch(pushUrl(path), {method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({subscription: sub.toJSON(), alerts: list})});
+  if (!r.ok) throw new Error("No se pudieron guardar los avisos. Inténtalo de nuevo en un momento.");
+  if (!list.length) await sub.unsubscribe();
+  else showNote(`Avisos activados: ${list.length === 1 ? "1 parada" : list.length + " paradas"}.`);
+}
+
+document.getElementById("btnTestPush").onclick = async () => {
+  try {
+    const sub = await getSubscription(true);
+    const r = await (await fetch(pushUrl("test"), {method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({subscription: sub.toJSON()})})).json();
+    showNote(r.ok ? "Aviso de prueba enviado: debería llegarte en unos segundos." : "El servicio de notificaciones no aceptó el aviso de prueba.");
+  } catch (err) { showNote(err.message); }
 };
 
 // Al volver a la pestaña o abrir la app instalada, actualizar enseguida
 document.addEventListener("visibilitychange", ()=>{
-  if (document.visibilityState === "visible" && Date.now() - fetchedAt > 15000) refresh();
+  if (document.visibilityState === "visible" && Date.now() - fetchedAt > 5000) refresh();
 });
 
 // ---------- App instalable (PWA) ----------
@@ -665,6 +796,7 @@ function showNote(msg){
 }
 
 refresh();
+if (firstVisit) setTimeout(()=> introDlg.showModal(), 600);
 </script>
 </body>
 </html>

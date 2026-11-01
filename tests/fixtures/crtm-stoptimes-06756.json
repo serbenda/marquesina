@@ -1,0 +1,130 @@
+{
+ "stopTimes": {
+  "actualDate": "2026-11-01T10:23:33+01:00",
+  "stop": {
+   "codStop": "8_06756",
+   "shortCodStop": "06756",
+   "name": "MARQUÉS VALDAVIA-RAMÓN FDEZ.GUISASOLA",
+   "park": 0,
+   "nightLinesService": 0
+  },
+  "times": {
+   "Time": [
+    {
+     "line": {
+      "codLine": "8__151___",
+      "shortDescription": "151",
+      "codMode": "8"
+     },
+     "direction": 1,
+     "destination": "MADRID (Plaza de Castilla)-ALCOBENDAS (Av. de España)",
+     "destinationStop": {
+      "codStop": "8_10614",
+      "shortCodStop": "10614",
+      "name": "AV.ESPAÑA-EST.ALCOBENDAS-S.S.REYES",
+      "park": 0,
+      "nightLinesService": 1
+     },
+     "time": "2026-11-01T10:29:31+01:00",
+     "codVehicle": "",
+     "codIssue": "8__151____3_10:10:00_1_-__5_8__151___"
+    },
+    {
+     "line": {
+      "codLine": "8__158___",
+      "shortDescription": "158",
+      "codMode": "8"
+     },
+     "direction": 1,
+     "destination": "MADRID (Avda. San Luis)-SAN SEBASTIÁN DE LOS REYES (Tempranales)",
+     "destinationStop": {
+      "codStop": "8_18979",
+      "shortCodStop": "18979",
+      "name": "PICOS DE EUROPA-SIERRA DE ALBARRACÍN",
+      "park": 0,
+      "nightLinesService": 0
+     },
+     "time": "2026-11-01T10:34:28+01:00",
+     "codVehicle": "",
+     "codIssue": "8__158____3_10:10:00_1_-__3_8__158___"
+    },
+    {
+     "line": {
+      "codLine": "8__827___",
+      "shortDescription": "827",
+      "codMode": "8"
+     },
+     "direction": 1,
+     "destination": "MADRID (Canillejas)-PASO APROX. POR TRES CANTOS (Puerta de Madrid)",
+     "destinationStop": {
+      "codStop": "8_09097",
+      "shortCodStop": "09097",
+      "name": "AV.PARQUE-PZA.PUERTA MADRID",
+      "park": 0,
+      "nightLinesService": 1
+     },
+     "time": "2026-11-01T10:46:46+01:00",
+     "codVehicle": "",
+     "codIssue": "VCM20033417"
+    },
+    {
+     "line": {
+      "codLine": "8__153___",
+      "shortDescription": "153",
+      "codMode": "8"
+     },
+     "direction": 1,
+     "destination": "MADRID (Plaza de Castilla)-SAN S. REYES (Pza. Univ. Popular)",
+     "destinationStop": {
+      "codStop": "8_06804",
+      "shortCodStop": "06804",
+      "name": "PZA.UNIVERSIDAD POPULAR-EST.BAUNATAL",
+      "park": 0,
+      "nightLinesService": 1
+     },
+     "time": "2026-11-01T10:48:57+01:00",
+     "codVehicle": "",
+     "codIssue": "8__153____3_10:25:00_1_-__6_8__153___"
+    },
+    {
+     "line": {
+      "codLine": "9__10__006_",
+      "shortDescription": "10",
+      "codMode": "9"
+     },
+     "direction": 1,
+     "destination": "MIGUEL DE CERVANTES-JARDINES MEMORIA",
+     "destinationStop": {
+      "codStop": "8_21076",
+      "shortCodStop": "21076",
+      "name": "MIGUEL DE CERVANTES-JARDINES MEMORIA",
+      "park": 0,
+      "nightLinesService": 0
+     },
+     "time": "2026-11-01T10:54:30+01:00",
+     "codVehicle": "",
+     "codIssue": "9__10__006__3_10:20:00_1_-__2_9__10__006_"
+    },
+    {
+     "line": {
+      "codLine": "8__828___",
+      "shortDescription": "828",
+      "codMode": "8"
+     },
+     "direction": 1,
+     "destination": "MADRID (Canillejas)-ALCOBENDAS-UNIV.AUTONOMA",
+     "destinationStop": {
+      "codStop": "8_18174",
+      "shortCodStop": "18174",
+      "name": "FELICIDAD-HECHIZO",
+      "park": 0,
+      "nightLinesService": 0
+     },
+     "time": "2026-11-01T10:56:06+01:00",
+     "codVehicle": "",
+     "codIssue": "VCM20033359"
+    }
+   ]
+  }
+ }
+}
