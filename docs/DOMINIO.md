@@ -61,8 +61,8 @@ Todos los registros de GitHub Pages deben ir en **DNS only** (nube gris), no *Pr
 | # | Paso | Dónde | Estado |
 |---|---|---|---|
 | 1 | Añadir `bendi.dev` a Cloudflare, plan Free, importando registros | Cloudflare → *Add a domain* | ✅ Hecho |
-| 2 | Pasar a **DNS only** los 9 registros importados (4 A, 4 AAAA, 1 CNAME) | Cloudflare → bendi.dev → **DNS → Records** → *Edit* en cada uno → *Proxy status* apagado → *Save* | ⏳ Hechos 2 de 9 (A `185.199.110.153` y `185.199.111.153`). Faltan los A `185.199.108.153` y `185.199.109.153`, los 4 AAAA y el CNAME `www` |
-| 3 | Añadir el TXT de verificación de GitHub: nombre `_github-pages-challenge-serbenda`, valor `893263541f409edd80b575fb2892c9` | Cloudflare → DNS → Records → *Add record* | ⏳ Pendiente |
+| 2 | Pasar a **DNS only** los 9 registros importados (4 A, 4 AAAA, 1 CNAME) | Cloudflare → bendi.dev → **DNS → Records** → seleccionar los registros → **Edit** (edición en bloque) → *Proxy status* apagado → *Save* | ✅ Hecho (9 de 9) |
+| 3 | Añadir el TXT de verificación de GitHub: nombre `_github-pages-challenge-serbenda`, valor `893263541f409edd80b575fb2892c9` | Cloudflare → DNS → Records → *Add record* | ✅ Hecho (10 registros en total, todos DNS only) |
 | 4 | Cambiar los nameservers a `hassan.ns.cloudflare.com` y `magali.ns.cloudflare.com` | Porkbun → *Domain Management* → bendi.dev → **Authoritative Nameservers** → *Edit* (borrar los 4 de Porkbun, poner los 2 de Cloudflare) → *Submit* | ⏳ Pendiente |
 | 5 | Esperar a que Cloudflare marque bendi.dev como **Active** (minutos a unas horas; llega un email) | Cloudflare → bendi.dev → Overview | ⏳ Pendiente |
 | 6 | Comprobar que `https://bendi.dev` y `https://bendi.dev/marquesina/` siguen cargando con candado | Navegador | ⏳ Pendiente |
