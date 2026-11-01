@@ -450,9 +450,20 @@ export default {
     if (url.pathname.startsWith("/crtm/")) {
       const fm = url.pathname.slice("/crtm/".length).match(/^(Get[A-Za-z]+)(\.php)?$/);
       if (!fm) return new Response("Not found", { status: 404, headers: cors });
+      // Paradas y líneas casi no cambian y la búsqueda del Consorcio tarda 4-10 s: se guardan 1 día
+      const slow = /^(GetNearestStopsByLocation|GetStops|GetLinesInformation)$/.test(fm[1]);
+      const ttl = slow ? 86400 : CACHE_SECONDS;
+      const headers = { ...cors, "Content-Type": "application/json; charset=utf-8", "Cache-Control": `max-age=${slow ? 3600 : CACHE_SECONDS}` };
+      const cache = slow && globalThis.caches && caches.default;
+      const key = new Request(`https://cache.marquesina/crtm/${fm[1]}${url.search}`);
+      try { const hit = cache && await cache.match(key); if (hit) return new Response(await hit.text(), { headers }); } catch {}
       try {
-        const text = await crtmFetch(`${fm[1]}.php${url.search}`);
-        return new Response(text, { headers: { ...cors, "Content-Type": "application/json; charset=utf-8", "Cache-Control": `max-age=${CACHE_SECONDS}` } });
+        const text = await crtmFetch(`${fm[1]}.php${url.search}`, ttl);
+        if (cache) {
+          const put = cache.put(key, new Response(text, { headers: { "Content-Type": "application/json", "Cache-Control": "max-age=86400" } })).catch(() => {});
+          ctx && ctx.waitUntil ? ctx.waitUntil(put) : await put;
+        }
+        return new Response(text, { headers });
       } catch {
         return json({ error: "El Consorcio no responde ahora mismo" }, 502, cors);
       }

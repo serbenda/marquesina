@@ -358,6 +358,13 @@ Formato sin culpables (*blameless*): qué pasó, por qué y qué se cambió para
 - **Prevención:** test en `worker.test.js` y nuevo paso del chequeo horario que hace la búsqueda real a través de Deno.
 - **Lección:** probar **cada tipo de ruta** a través de cada camino, no solo una. Un proveedor nuevo puede tener reglas propias.
 
+### INC-7 · La búsqueda de paradas fallaba a veces (1 nov, 20:35)
+- **Impacto:** al comprobar el arreglo de INC-6, la búsqueda en Sanse falló 2 de 4 veces con *"El repetidor no pudo llegar al worker (tiempo de espera agotado)"*.
+- **Causa raíz:** la búsqueda del Consorcio tarda entre 4 y más de 9 s, y el repetidor se rendía a los 9 s (la web, a los 10 s, también sin bloqueo).
+- **Arreglo:** el worker guarda 1 día las búsquedas, paradas y líneas del Consorcio; la web redondea el punto (~100 m) y el radio (50 m) para reutilizarlas, y espera hasta 25 s en las búsquedas; el repetidor, hasta 24 s.
+- **Prevención:** test de la caché en `worker.test.js`.
+- **Lección:** medir los tiempos reales de cada dependencia antes de fijar límites de espera.
+
 ## 12. Mejoras de fiabilidad pendientes
 
 | Mejora | Qué resuelve | Esfuerzo |

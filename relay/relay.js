@@ -19,7 +19,7 @@
  * QUÉ HACE
  *   - Solo deja pasar las rutas del worker: /crtm/…, /emt/… y /push/…. El resto: 404.
  *   - Reenvía GET y POST (con su cuerpo, como mucho 16 KB) y responde a OPTIONS (CORS).
- *   - Prueba primero api.bendi.dev y, si no responde, marquesina.serbenda.workers.dev.
+ *   - Prueba primero api.bendi.dev y, si no responde, marquesina.serbenda.workers.dev (24 s en total).
  *   - Añade las cabeceras CORS para bendi.dev y serbenda.github.io, igual que el worker.
  *   - No necesita secretos: las claves de EMT siguen solo en Cloudflare.
  *
@@ -32,7 +32,7 @@ export const UPSTREAMS = ["https://api.bendi.dev", "https://marquesina.serbenda.
 export const ALLOWED_ORIGINS = ["https://bendi.dev", "https://serbenda.github.io"];
 const ROUTE = /^\/(crtm|emt|push)\//;
 const MAX_BODY = 16 * 1024;
-const TIMEOUT_MS = 9000;   // la web espera 10 s: hay que contestar antes
+const TIMEOUT_MS = 24000;  // la búsqueda de paradas del Consorcio puede tardar 10 s o más; la web le da 25 s
 
 function corsHeaders(req) {
   const origin = req.headers.get("Origin");
