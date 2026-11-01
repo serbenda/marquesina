@@ -75,10 +75,8 @@ Teselas de OpenStreetMap (`tile.openstreetmap.org`) con atribución. Para un uso
 
 ## 4. Cómo funciona la web por dentro (`index.html`)
 
-1. **Arranque:** lee los ajustes de `localStorage` (clave `marquesina`) y los combina con los valores por defecto (`DEF`). Si no hay proxy guardado, usa `PROXY`.
-2. **Modo:**
-   - *En vivo*, si hay paradas de EMT o del Consorcio. Sin ajustes guardados se usan las paradas de ejemplo `06756, 06758` (Alcobendas, constante `DEF.crtm`), así la web arranca en vivo para cualquiera.
-   - *Demo*, solo si el usuario la elige (Ajustes → Usar demo, campo `demo: true`): buses simulados que se acercan a Cibeles.
+1. **Arranque:** lee los ajustes de `localStorage` (clave `marquesina`). Si no hay nada guardado, usa los valores por defecto (`DEF`), con dos paradas de ejemplo en Alcobendas. Si hay ajustes guardados se respetan tal cual, también sin paradas. La URL del worker es fija (constante `PROXY`) y no se puede cambiar desde la web. Los campos de versiones anteriores (`email`, `pass`, `base`, `proxy`, `demo`) se descartan al leer.
+2. **Estado:** *En vivo* si hay paradas; *Sin paradas* si no hay ninguna (la lista invita a añadir con Cerca de mí, Zona o Buscar paradas); *Sin conexión* si fallan todas. No hay modo de demostración: todo son datos reales.
 3. **Ciclo:** `setInterval(tick, 1000)`.
    - Cada segundo se actualizan la cuenta atrás del anillo y los minutos de la lista (restando el tiempo transcurrido desde la última consulta, sin volver a llamar a la API).
    - Cuando llega a cero, `refresh()` consulta todas las paradas en paralelo (`Promise.all`). Si una falla, se muestra su error y las demás siguen funcionando.
@@ -130,11 +128,9 @@ Teselas de OpenStreetMap (`tile.openstreetmap.org`) con atribución. Para un uso
 |---|---|
 | `stops` | Paradas EMT, separadas por comas |
 | `crtm` | Paradas del Consorcio (5 cifras) |
-| `proxy` | URL del worker. Vacío en el formulario = usar `PROXY` |
 | `every` | Segundos entre consultas (10, 15, 30 o 60; por defecto 15) |
 | `alerts` | Avisos por parada (clave `emt:<id>` o `crtm:<id>`): `on`, `days` (1–7), `from`, `to`, `line`, `lead` (minutos de antelación) |
 | `meta` | Datos propios de cada parada, con clave `emt:<id>` o `crtm:<id>`: `alias` (nombre), `walk` (minutos andando), `fav` (favorita) |
-| `demo` | `true` si el usuario eligió el modo demo |
 
 ## 5. El proxy (`worker.js`)
 
