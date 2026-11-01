@@ -19,7 +19,7 @@ Web estática (GitHub Pages) que muestra en tiempo real los autobuses de la Comu
 | `relay/` | Repetidor de respaldo en Deno Deploy: reenvía al worker cuando Cloudflare está bloqueado |
 | `tests/` | `node:test` con respuestas reales en `tests/fixtures/` |
 | `.github/workflows/` | `tests.yml`, `pages.yml`, `worker.yml`, `healthcheck.yml` |
-| `docs/` | GUIA (para quien empieza), REFERENCIA (por dentro), ARQUITECTURA (porqués), MANTENIMIENTO (tareas), DOMINIO (DNS), RESPALDO (repetidor) |
+| `docs/` | GUIA (para quien empieza), REFERENCIA (por dentro), ARQUITECTURA (porqués), MANTENIMIENTO (tareas), DOMINIO (DNS), RESPALDO (repetidor), HISTORIA (cómo se construyó), OPERACIONES (SRE), SEGURIDAD (amenazas y controles) |
 
 ## Reglas que no se pueden saltar
 

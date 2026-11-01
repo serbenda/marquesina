@@ -38,12 +38,14 @@ flowchart LR
 
 ```mermaid
 flowchart TB
-  A["Se abre la web"] --> B["¿Contesta en 4 s la dirección<br/>que funcionó la última vez?"]
-  B -- "Sí" --> U["La usa"]
-  B -- "No" --> C["Prueba las otras dos A LA VEZ"]
-  C --> D["Se queda con la primera que conteste<br/>y la recuerda (localStorage)"]
-  U --> E["Si en algún momento una petición falla,<br/>prueba las otras a la vez"]
-  D --> E
+  A["Se abre la web"] --> B["Pregunta a los TRES caminos a la vez"]
+  B --> C{"¿El primero en contestar<br/>es api.bendi.dev?"}
+  C -- "Sí" --> U["Usa api.bendi.dev"]
+  C -- "No" --> D["Espera 0,5 s más<br/>por api.bendi.dev"]
+  D -- "Llega" --> U
+  D -- "No llega (bloqueo)" --> R["Usa el que contestó<br/>(normalmente el repetidor)"]
+  U --> E["Si en algún momento una petición falla,<br/>prueba los otros a la vez"]
+  R --> E
 ```
 
 Las tres direcciones, en orden: `api.bendi.dev` → `marquesina.serbenda.workers.dev` → `marquesina.serbenda.deno.net`.
@@ -106,6 +108,7 @@ El chequeo horario de GitHub (*Chequeo de marquesina*, paso **Repetidor de respa
 | Síntoma | Causa probable | Qué hacer |
 |---|---|---|
 | `{"code":"ERR","error":"El repetidor no pudo llegar al worker…"}` | El worker de Cloudflare no responde | Es un fallo del worker, no del repetidor: [MANTENIMIENTO.md](MANTENIMIENTO.md) |
+| *Zona*, *Buscar paradas* o *Cerca de mí* traen casi nada durante un bloqueo | La ruta acaba en `.php` y Deno Deploy la rechaza con un 404 vacío (sin CORS: el navegador ve *Failed to fetch*) | La web pide `/crtm/Get…` **sin** `.php` y el worker lo añade. No volver a usar rutas `.php` a través del repetidor |
 | 404 en todas las rutas | Entrypoint mal configurado | Deno Deploy → app → Settings → Build config → `relay/main.js` |
 | La dirección no existe | La app o la organización tienen otro nombre | Ver la dirección real en Deno Deploy y cambiarla en los tres sitios del paso 2 |
 | Funciona en el navegador pero la web no lo usa | Caché del navegador | Recargar forzando; si persiste, comprobar que `sw.js` tiene `.deno.net` en la lista de direcciones que no guarda |

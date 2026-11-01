@@ -70,5 +70,9 @@ Los tests usan **respuestas reales** guardadas en `tests/fixtures/`. Si EMT o el
 | Un paso de configuración o una cuenta | `docs/GUIA.md` y `docs/MANTENIMIENTO.md` |
 | Una decisión de diseño | `docs/ARQUITECTURA.md` |
 | El dominio o el DNS | `docs/DOMINIO.md` |
+| El repetidor | `docs/RESPALDO.md` |
+| Algo que afecte a la operación (límites, vigilancia, recuperación) | `docs/OPERACIONES.md` |
+| Algo que afecte a la seguridad (rutas, validaciones, secretos, dependencias) | `docs/SEGURIDAD.md` |
+| Un hito o una decisión importante | `docs/HISTORIA.md` |
 
 Los diagramas son [Mermaid](https://mermaid.js.org) y GitHub los dibuja solos. Para comprobar uno antes de subirlo, pégalo en <https://mermaid.live>.

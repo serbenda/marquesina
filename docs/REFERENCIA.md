@@ -77,7 +77,13 @@ flowchart LR
 
   PUSHS["Servicios de push<br/>FCM · Mozilla · Apple"]
 
+  subgraph Deno["🦕 Deno Deploy"]
+    RL["relay/relay.js<br/>repetidor sin estado"]
+  end
+
   UI -- "HTTPS GET/POST" --> WK
+  UI -. "si Cloudflare no contesta" .-> RL
+  RL -- "reenvía" --> WK
   UI -- "teselas" --> OSM
   WK --> EMT
   WK --> CRTM
@@ -119,6 +125,8 @@ flowchart TB
 | `sw.js` | 80 | Caché de la app y recepción de notificaciones | Navegador (segundo plano) |
 | `worker.js` | 420 | Rutas, proxy, cachés, Durable Object, cron | Cloudflare |
 | `wrangler.toml` | 30 | Nombre, dominio, Durable Object, cron | Despliegue |
+| `relay/relay.js` | 100 | Repetidor: rutas permitidas, reenvío, alternativa, CORS | Deno Deploy (y Node en los tests) |
+| `relay/main.js` | 5 | `Deno.serve(handle)` | Deno Deploy |
 
 ---
 
@@ -219,7 +227,9 @@ flowchart TB
 | 2 | `https://marquesina.serbenda.workers.dev` | Cloudflare | Si un filtro bloquea el dominio propio |
 | 3 | `https://marquesina.serbenda.deno.net` | Deno Deploy (repetidor) | Si las operadoras bloquean IP de Cloudflare (LaLiga). Ver [RESPALDO.md](RESPALDO.md) |
 
-Al abrir la web, `pickProxy()` prueba en 4 s la dirección que funcionó la última vez (guardada en `localStorage["marquesina-proxy"]`). Si no contesta, prueba las otras dos a la vez y se queda con la más rápida. La primera consulta de paradas espera a esa elección.
+Al abrir la web, `pickProxy()` pide `/push/key` a **los tres caminos a la vez**. Si el primero en contestar es `api.bendi.dev`, se usa ese. Si es otro, se espera 0,5 s más por `api.bendi.dev` y, si no llega, se usa el que contestó. Así, al terminar un bloqueo, la web vuelve sola al camino directo. El camino elegido se guarda en `localStorage["marquesina-proxy"]` (se usa si ninguno contesta al abrir). La primera consulta de paradas espera a esa elección.
+
+⚠️ Las rutas del Consorcio se piden **sin `.php`** (`/crtm/GetNearestStopsByLocation?…`): Deno Deploy rechaza las que acaban en `.php` (ver §6.9).
 
 ### 4.6 Qué pasa cuando una parada falla
 
@@ -591,6 +601,44 @@ flowchart LR
 - Métodos: `GET, POST, OPTIONS`. Cabecera permitida: `Content-Type`.
 - El navegador guarda la respuesta a `OPTIONS` **1 día** (`Access-Control-Max-Age: 86400`).
 
+### 6.9 El repetidor de respaldo (`relay/`)
+
+Vive en Deno Deploy, fuera de Cloudflare, para cuando las operadoras bloquean IP de Cloudflare (ver [RESPALDO.md](RESPALDO.md) y [ARQUITECTURA §5.2](ARQUITECTURA.md)).
+
+```mermaid
+flowchart TB
+  IN["Petición de la web"] --> O{"¿OPTIONS?"}
+  O -- "Sí" --> C["Cabeceras CORS"]
+  O -- "No" --> H{"¿Ruta '/'?"}
+  H -- "Sí" --> OK["{ok:true, servicio}"]
+  H -- "No" --> RT{"¿Empieza por<br/>/crtm/, /emt/ o /push/?"}
+  RT -- "No" --> NF["404"]
+  RT -- "Sí" --> M{"¿GET o POST?"}
+  M -- "No" --> X405["405"]
+  M -- "Sí" --> SZ{"¿Cuerpo ≤ 16 KB?"}
+  SZ -- "No" --> X413["413"]
+  SZ -- "Sí" --> U1["Reenvía a api.bendi.dev"]
+  U1 -- "contesta (cualquier código)" --> COPY["Copia estado, cuerpo,<br/>Content-Type y Cache-Control<br/>+ CORS"]
+  U1 -- "error de red o tiempo" --> U2["Reenvía a<br/>marquesina.serbenda.workers.dev"]
+  U2 -- "contesta" --> COPY
+  U2 -- "error" --> E502["502 {code:'ERR'}"]
+```
+
+| Detalle | Valor | Por qué |
+|---|---|---|
+| Plazo total | 9 s, compartido entre las dos direcciones | La web espera 10 s por petición |
+| Rutas | `/crtm/`, `/emt/`, `/push/` y `/` | No ser un proxy abierto |
+| Métodos | GET, POST, OPTIONS | Los que usa la web |
+| Cuerpo máximo | 16 KB | Una suscripción con 10 avisos ocupa ~2 KB |
+| Secretos | Ninguno | Las claves de EMT siguen solo en Cloudflare |
+| Estado | Ninguno | El worker es la única fuente de verdad (avisos incluidos) |
+| Errores del worker (4xx/5xx) | Se copian tal cual | Traen un mensaje útil para la web |
+| Tests | `tests/relay.test.js` (8) | Red simulada: reenvío, alternativa, 502, POST, límites, CORS |
+
+⚠️ **Deno Deploy rechaza con un 404 vacío (sin cabeceras CORS) cualquier ruta que acabe en `.php`**, antes de que llegue a `relay.js`. Por eso la web pide `/crtm/GetNearestStopsByLocation?…` sin `.php`, y el worker acepta las dos formas y siempre añade `.php` al llamar al Consorcio. El chequeo horario hace esta búsqueda de verdad a través del repetidor.
+
+`relay.js` no usa nada propio de Deno (solo `fetch`, `Request`, `Response` y `Headers`), por eso se prueba con Node. `main.js` es lo único específico: `Deno.serve((req) => handle(req))`.
+
 ---
 
 ## 7. Los avisos (Web Push)
@@ -851,6 +899,9 @@ flowchart TB
 | Cron | cada minuto | `wrangler.toml` | Revisión de avisos |
 | Chequeo | minuto 17 de cada hora | `healthcheck.yml` | Vigilancia |
 | Plan gratuito de Workers | 100.000 peticiones al día | Cloudflare | Límite de uso |
+| `pickProxy` | 4 s por camino (los tres a la vez) + 0,5 s de preferencia por `api.bendi.dev` | `index.html` | Elección del camino al abrir |
+| Plazo del repetidor | 9 s | `relay/relay.js` | Tiempo total para llegar al worker |
+| Cuerpo máximo del repetidor | 16 KB | `relay/relay.js` | Tamaño de los POST de avisos |
 
 ---
 
@@ -874,6 +925,9 @@ flowchart TB
 | *Indica los minutos andando de la parada…* | `index.html` | Aviso sin minutos andando | Rellenar el campo |
 | *No se pudieron guardar los avisos…* | `index.html` | `/push/subscribe` falló | Reintentar; ver los logs del worker |
 | *Se ha alcanzado el máximo de suscripciones* (503) | `worker.js` | 1000 suscripciones | Subir `MAX_SUBSCRIPTIONS` |
+| *El repetidor no pudo llegar al worker (…)* (502) | `relay/relay.js` | El worker no contesta ni en `api.bendi.dev` ni en `workers.dev` | Es un fallo del worker: [MANTENIMIENTO.md](MANTENIMIENTO.md) |
+| *Failed to fetch* solo en la búsqueda de paradas, a través del repetidor | Deno Deploy | Ruta acabada en `.php` | Pedirla sin `.php` |
+| *Petición demasiado grande* (413) | `relay/relay.js` | Cuerpo de más de 16 KB | Revisar qué manda la web |
 
 ---
 
@@ -888,6 +942,7 @@ flowchart LR
   P5["Consultas solapadas"] --> S5["Una consulta a la vez<br/>con cola (pending)"]
   P6["Ajustes borraba nombres<br/>y avisos"] --> S6["Se conservan meta y alerts<br/>al guardar"]
   P7["Sin conexión en casa:<br/>la red bloquea *.workers.dev"] --> S7["api.bendi.dev<br/>+ alternativa automática"]
+  P8["Sigue sin ir en casa<br/>en día de partido"] --> S8["Bloqueo de LaLiga por IP<br/>→ repetidor en Deno Deploy<br/>+ 3 caminos a la vez"]
 ```
 
 | Problema | Causa | Solución | Dónde |
@@ -899,3 +954,4 @@ flowchart LR
 | Consultas solapadas | Varios `refresh()` a la vez | `refreshing` + `pending` | `index.html` |
 | Ajustes borraba nombres y avisos | Se rehacía `cfg` sin `meta` ni `alerts` | `{...cfg, …}` | `index.html` |
 | "No se pudo conectar" en una red concreta | Filtro que bloquea `*.workers.dev` | Dominio propio `api.bendi.dev` | `wrangler.toml`, `index.html` |
+| Sigue sin conectar durante el fútbol | Bloqueo de LaLiga a IP de Cloudflare (mismas IP para los dos nombres) | Repetidor en Deno Deploy y elección del camino en paralelo | `relay/`, `index.html`, `sw.js` |

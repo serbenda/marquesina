@@ -264,3 +264,20 @@ test("Consorcio con errores: reintenta y, si sigue fallando, devuelve los últim
   const r4 = await worker.default.fetch(new Request("https://w/crtm/stop/8_08888"), {}, {});
   assert.equal(r4.status, 502);
 });
+
+test("/crtm/Get… funciona con y sin \".php\" (el repetidor de Deno rechaza las rutas .php)", async (t) => {
+  const calls = [];
+  t.mock.method(globalThis, "fetch", async (url) => { calls.push(String(url)); return new Response('{"stops":{"Stop":[]}}'); });
+  const q = "?latitude=40.54&longitude=-3.64&mode=&method=1&precision=700";
+  for (const path of ["/crtm/GetNearestStopsByLocation", "/crtm/GetNearestStopsByLocation.php"]) {
+    const res = await worker.default.fetch(new Request("https://w" + path + q, { headers: { Origin: "https://bendi.dev" } }), {}, {});
+    assert.equal(res.status, 200, path);
+  }
+  // Las dos acaban en la misma URL del Consorcio, siempre con ".php"
+  assert.deepEqual(calls, Array(2).fill("https://www.crtm.es/widgets/api/GetNearestStopsByLocation.php" + q));
+  // Lo que no sea Get<Letras> sigue sin pasar
+  for (const bad of ["/crtm/Evil.php", "/crtm/GetX.js", "/crtm/../GetStops", "/crtm/GetStops.php.php"]) {
+    assert.equal((await worker.default.fetch(new Request("https://w" + bad), {}, {})).status, 404, bad);
+  }
+  assert.equal(calls.length, 2);
+});

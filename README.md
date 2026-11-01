@@ -119,6 +119,8 @@ flowchart LR
   W --> CRTM[("🚍 API Consorcio")]
   W -- "cron cada minuto" --> DO[("🗄️ Durable Object<br/>avisos")]
   W -- "Web Push" --> M["🔔 Tu móvil"]
+  U -. "si Cloudflare está bloqueado<br/>(fútbol)" .-> R["🛟 Repetidor<br/>Deno Deploy"]
+  R -- "reenvía" --> W
   U -- "mapa" --> OSM[("🗺️ OpenStreetMap")]
   GH["🐙 GitHub · main"] -- "GitHub Actions" --> P["🌐 GitHub Pages<br/>bendi.dev/marquesina"]
   P --> U
@@ -131,6 +133,7 @@ flowchart LR
 | **App instalable** | Abre al instante y recibe notificaciones | `sw.js`, `manifest.webmanifest` |
 | **Worker** | Intermediario con EMT y el Consorcio, cachés, avisos y cron | `worker.js`, `wrangler.toml` |
 | **Avisos** | Firma y cifra cada notificación, sin librerías | `push.js` |
+| **Repetidor** | Camino de respaldo fuera de Cloudflare para los bloqueos de LaLiga | `relay/` |
 
 **Tres caminos al mismo worker:** `api.bendi.dev`, `marquesina.serbenda.workers.dev` y un repetidor fuera de Cloudflare (Deno Deploy). Durante los partidos de LaLiga varias operadoras bloquean IP de Cloudflare; la web prueba los tres a la vez y se queda con el que conteste ([docs/RESPALDO.md](docs/RESPALDO.md)).
 
@@ -227,6 +230,9 @@ Antes de abrir una PR, lee [CONTRIBUTING.md](CONTRIBUTING.md). Lo más important
 | [docs/ARQUITECTURA.md](docs/ARQUITECTURA.md) | Quien quiere entender las decisiones | Piezas, fuentes de datos, por qué así, seguridad |
 | [docs/MANTENIMIENTO.md](docs/MANTENIMIENTO.md) | Quien mantiene el servicio | Mobility Labs, Cloudflare, GitHub, comprobaciones y errores |
 | [docs/DOMINIO.md](docs/DOMINIO.md) | Quien toca el DNS | `api.bendi.dev`: por qué, pasos, estado y vuelta atrás |
+| [docs/HISTORIA.md](docs/HISTORIA.md) | Todos | Cómo se construyó paso a paso: fechas, decisiones y lecciones |
+| [docs/OPERACIONES.md](docs/OPERACIONES.md) | SRE / DevOps | Vigilancia, incidentes, recuperación, límites y postmortems |
+| [docs/SEGURIDAD.md](docs/SEGURIDAD.md) | Seguridad | Amenazas, controles, secretos y riesgos |
 | [docs/RESPALDO.md](docs/RESPALDO.md) | Quien mantiene el servicio | Repetidor fuera de Cloudflare para los bloqueos de LaLiga |
 | [CONTRIBUTING.md](CONTRIBUTING.md) · [AGENTS.md](AGENTS.md) | Quien va a hacer cambios (personas o IA) | Normas, lista de comprobación y cosas que confunden |
 | [SECURITY.md](SECURITY.md) · [CHANGELOG.md](CHANGELOG.md) | Todos | Datos y secretos · historial |

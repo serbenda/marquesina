@@ -9,7 +9,8 @@ Este documento explica cómo está montada marquesina, de dónde salen los datos
 Una web estática que muestra en un mapa los autobuses que van a llegar a las paradas que elige el usuario, con los minutos que faltan, y se actualiza sola cada 15 s por defecto (10 s, 30 s o 1 min a elegir).
 
 - **Web:** https://bendi.dev/marquesina/ (GitHub Pages, repo `serbenda/marquesina`).
-- **Worker (proxy y avisos):** **https://api.bendi.dev** (dirección principal) y https://marquesina.serbenda.workers.dev (alternativa), las dos apuntan al mismo worker de Cloudflare. La web usa la primera y, si no responde, la segunda. Ver [DOMINIO.md](DOMINIO.md).
+- **Worker (proxy y avisos):** **https://api.bendi.dev** (dirección principal) y https://marquesina.serbenda.workers.dev (alternativa), las dos apuntan al mismo worker de Cloudflare. Ver [DOMINIO.md](DOMINIO.md).
+- **Repetidor de respaldo:** https://marquesina.serbenda.deno.net, en Deno Deploy, fuera de Cloudflare. Reenvía al worker cuando las operadoras bloquean Cloudflare durante el fútbol. Ver §5.2 y [RESPALDO.md](RESPALDO.md).
 - **No hay servidor propio ni base de datos.** Los ajustes de cada usuario se guardan en su navegador.
 
 ## 2. Piezas
@@ -17,6 +18,8 @@ Una web estática que muestra en un mapa los autobuses que van a llegar a las pa
 ```mermaid
 flowchart LR
   U[Navegador del usuario<br/>index.html] -- "/emt/... y /crtm/..." --> W[Cloudflare Worker<br/>worker.js]
+  U -. "si Cloudflare está bloqueado" .-> R[Repetidor<br/>Deno Deploy<br/>relay/]
+  R -- "reenvía" --> W
   W -- "claves de la app<br/>(secretos)" --> EMT[(API EMT Madrid<br/>openapi.emtmadrid.es)]
   W --> CRTM[(API Consorcio<br/>crtm.es/widgets/api)]
   U -- "teselas del mapa" --> OSM[(OpenStreetMap)]
@@ -30,6 +33,7 @@ flowchart LR
 | App instalable | `manifest.webmanifest`, `sw.js`, `assets/` | Navegador del usuario | Igual que la web |
 | Lógica compartida | `logic.js` | Navegador, worker y tests | Con la web y con el worker |
 | Proxy y avisos | `worker.js`, `push.js`, `wrangler.toml` | Cloudflare Workers + Durable Object `PushHub` + cron cada minuto | Automático: cambios en `main` → workflow `worker.yml` |
+| Repetidor de respaldo | `relay/relay.js`, `relay/main.js` | Deno Deploy (organización `serbenda`, app `marquesina`) | Automático: Deno publica cada cambio en `main` |
 | Tests | `tests/`, `package.json` | GitHub Actions en cada PR | Workflow `tests.yml` |
 | Vigilancia | `.github/workflows/healthcheck.yml` | GitHub Actions, cada hora | Forma parte del repo |
 | Despliegue | `.github/workflows/pages.yml` | GitHub Actions | Forma parte del repo |
@@ -185,6 +189,64 @@ El Consorcio responde a veces con error (502/500, o una página HTML en lugar de
 
 **Compatibilidad:** Chrome, Edge y Firefox (Android y escritorio). En iPhone solo con la app instalada en la pantalla de inicio (iOS 16.4+).
 
+### 5.2 Disponibilidad: tres caminos al worker
+
+**Problema.** La web depende de un único servicio (el worker). Si quien la usa no puede llegar a él, no ve nada. El 1 de noviembre de 2026 aparecieron dos formas de quedarse sin acceso desde una conexión doméstica:
+
+| Amenaza | Qué bloquea | Cuándo | Quién lo sufre |
+|---|---|---|---|
+| Filtros de red (Pi-hole, AdGuard, routers, antivirus, redes de empresa) | El **nombre** `*.workers.dev` | Siempre | Quien tenga ese filtro |
+| Bloqueo judicial de LaLiga | **IP** de Cloudflare (p. ej. `188.114.96.5` y `188.114.97.5`) | Durante los partidos | Clientes de Movistar, MasOrange, Vodafone y DIGI, también en móvil |
+
+**Decisión.** Tres caminos independientes y elección automática en el navegador:
+
+```mermaid
+flowchart TB
+  subgraph Navegador
+    PK["pickProxy()<br/>al abrir: los tres a la vez,<br/>prefiere api.bendi.dev"]
+    GJ["getJson()<br/>si una petición falla por red,<br/>los otros a la vez"]
+    LS[("localStorage<br/>marquesina-proxy")]
+    PK <--> LS
+    GJ --> LS
+  end
+  subgraph CF["Cloudflare (mismas IP)"]
+    A["1 · api.bendi.dev"]
+    B["2 · *.workers.dev"]
+    W["Worker"]
+    A --> W
+    B --> W
+  end
+  subgraph DN["Deno Deploy (otras IP)"]
+    R["3 · marquesina.serbenda.deno.net<br/>repetidor sin estado ni secretos"]
+  end
+  PK --> A & B & R
+  GJ --> A & B & R
+  R -- "servidor a servidor:<br/>fuera del bloqueo" --> A
+```
+
+| Camino | Protege contra | No protege contra |
+|---|---|---|
+| 1 · `api.bendi.dev` | Filtros por nombre `workers.dev` | Bloqueo por IP de Cloudflare; caída de Cloudflare |
+| 2 · `*.workers.dev` | Problemas de DNS o del certificado de `bendi.dev` | Bloqueo por IP; filtros `workers.dev` |
+| 3 · Repetidor en Deno | Bloqueo por IP de Cloudflare; filtros por nombre | Caída del propio worker (el repetidor solo reenvía) |
+
+**Alternativas descartadas:**
+
+| Opción | Por qué no |
+|---|---|
+| Pedir a cada persona que use una VPN | No es razonable para una web pública |
+| IP propia en Cloudflare (BYOIP) | Requiere plan Enterprise |
+| Duplicar el worker entero en otro proveedor | Habría que copiar las claves de EMT y separar las suscripciones de avisos: más secretos y dos fuentes de verdad |
+| **Repetidor sin estado (elegida)** | Sin secretos, sin datos, ~100 líneas, gratis y con tests; el worker sigue siendo la única fuente de verdad |
+
+**Consecuencias.**
+- Durante un bloqueo, arrancar cuesta ~0,5 s más; al terminar, la web vuelve sola a `api.bendi.dev`.
+- Deno Deploy rechaza las rutas que acaban en `.php`: la web pide las del Consorcio sin `.php` y el worker lo añade.
+- El repetidor añade un salto de red (decenas de milisegundos), solo cuando se usa.
+- El repetidor ve las mismas peticiones que el worker; no guarda nada (ver [SECURITY.md](../SECURITY.md)).
+- Si Cloudflare cayera por completo, el repetidor no ayudaría: no hay copia del worker fuera.
+- El panel de Deno Deploy usa un anti-robots de Cloudflare: **no se puede administrar durante un bloqueo** (hay que esperar o usar una VPN).
+
 ## 6. Despliegue
 
 ### Web
@@ -200,12 +262,16 @@ Configuración necesaria en el repo: **Settings → Pages → Source: GitHub Act
 - Los secretos de EMT siguen en Cloudflare: wrangler no los toca al desplegar, y `keep_vars = true` conserva además las variables creadas desde el panel.
 - **Manual:** el worker ya no es un solo archivo (importa `logic.js` y `push.js`), así que no se puede pegar en el editor de Cloudflare. Si el despliegue automático falla, se relanza desde *Actions → Desplegar worker en Cloudflare → Run workflow* (ver MANTENIMIENTO §2.3).
 
+### Repetidor
+- Deno Deploy está conectado al repositorio y vuelve a publicar `relay/` cada vez que cambia `main`, sin workflow propio. Configuración: *Dynamic*, entrypoint `relay/main.js`, sin comando de instalación ni de build, sin variables.
+- Los builds y registros están en console.deno.com → `serbenda` → `marquesina` → *Builds* / *Logs*.
+
 ### Vigilancia
-- El workflow `healthcheck.yml` se ejecuta cada hora (minuto 17) y comprueba la web publicada, el Consorcio y EMT a través del worker. Si algo falla, el workflow sale en rojo y GitHub envía un email.
+- El workflow `healthcheck.yml` se ejecuta cada hora (minuto 17) y comprueba la web publicada, el Consorcio y EMT a través del worker, la clave de los avisos y las direcciones alternativas (`workers.dev` y el repetidor). Si algo falla, el workflow sale en rojo y GitHub envía un email.
 - GitHub desactiva los workflows programados tras 60 días sin actividad en el repo. Si pasa, hay que reactivarlo desde *Actions*.
 
 ### Tests
-- `npm test` (Node 22, sin dependencias) ejecuta `tests/logic.test.js` y `tests/worker.test.js`.
+- `npm test` (Node 22, sin dependencias) ejecuta `tests/logic.test.js`, `tests/worker.test.js` y `tests/relay.test.js`.
 - `tests/fixtures/` guarda respuestas reales de EMT (parada 69) y del Consorcio (parada 06756 y posición de un 153). Si una API cambia de formato, se actualiza el fixture y se ajusta `logic.js`.
 - `worker.test.js` carga `worker.js` sustituyendo `cloudflare:workers` por una clase simulada, con almacenamiento en memoria y `fetch` falso. Comprueba el ciclo completo de un aviso, incluido descifrar la notificación como lo haría el navegador.
 - El cifrado se verificó además con una implementación independiente (Python, `cryptography`).
@@ -221,12 +287,13 @@ Configuración necesaria en el repo: **Settings → Pages → Source: GitHub Act
 | Paradas de EMT con "EMT rechazó el inicio de sesión" o "Faltan los secretos…" | Secretos del worker sin poner, mal copiados o claves revocadas | Revisar `EMT_CLIENT_ID` y `EMT_PASSKEY` en Cloudflare y la aplicación en Mobility Labs |
 | Worker devuelve 429 o deja de responder | Límite diario del plan gratuito | Ver métricas en Cloudflare; subir `cacheTtl` o el intervalo por defecto |
 | Todos los tiempos salen "Según horario" | El Consorcio cambió el formato de `codIssue` | Revisar la regla `live` en `parseCrtmTimes()` (`logic.js`) |
+| "No se pudo conectar…" solo en algunas redes y en día de partido | Bloqueo de LaLiga a IP de Cloudflare | La web debería pasar sola al repetidor; comprobar `marquesina.serbenda.deno.net/push/key` (RESPALDO §4) |
 | No llegan los avisos | Permiso de notificaciones denegado, app no instalada en iPhone, cron parado o suscripción caducada | Ver MANTENIMIENTO §7 |
 
 ### Revisiones periódicas
 - **Cada pocos meses:** comprobar que las tres APIs siguen respondiendo igual (ver las URLs de prueba).
 - **Leaflet:** está fijado a 1.9.4. Para actualizarlo, cambiar la versión en las dos etiquetas (`<link>` del CSS y `<script>`) y probar el mapa.
-- **Acciones de los workflows:** `checkout@v4`, `configure-pages@v5`, `upload-pages-artifact@v3`, `deploy-pages@v4` y `cloudflare/wrangler-action@v3`. GitHub avisa en *Actions* cuando alguna queda obsoleta.
+- **Acciones de los workflows:** `checkout@v7`, `setup-node@v7`, `configure-pages@v6`, `upload-pages-artifact@v3`, `deploy-pages@v5` y `cloudflare/wrangler-action@v4`. Dependabot propone cada mes las versiones nuevas con una PR a `development`.
 
 ## 8. Seguridad y privacidad
 
@@ -234,6 +301,7 @@ Configuración necesaria en el repo: **Settings → Pages → Source: GitHub Act
 - Todas las consultas de EMT se hacen con la aplicación `marquesina`; los usuarios no ponen ninguna cuenta. Si hubiera abuso, se pueden regenerar las claves en Mobility Labs y actualizar los secretos.
 - El worker solo reenvía las consultas de paradas y tiempos del Consorcio y responde a los orígenes permitidos.
 - La web no tiene analítica ni cookies propias.
+- El repetidor no tiene secretos ni guarda datos; solo deja pasar `/crtm/`, `/emt/` y `/push/`, limita los cuerpos a 16 KB y aplica el mismo CORS que el worker.
 
 ## 9. Ideas pendientes
 

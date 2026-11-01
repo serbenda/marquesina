@@ -4,6 +4,9 @@ Lo más reciente, arriba. Cada entrada dice qué cambia para quien usa la web y 
 
 ## Sin publicar
 
+- **Arreglado:** con el repetidor, *Zona*, *Buscar paradas* y *Cerca de mí* casi no encontraban paradas (Deno Deploy rechaza las rutas `.php`). La web las pide sin `.php`; nuevo chequeo real de la búsqueda por Deno.
+- **Documentación de ingeniería:** historia completa del proyecto ([docs/HISTORIA.md](docs/HISTORIA.md)), operación del servicio ([docs/OPERACIONES.md](docs/OPERACIONES.md)) y arquitectura de seguridad ([docs/SEGURIDAD.md](docs/SEGURIDAD.md)); el repetidor, integrado en la guía, la arquitectura y la referencia.
+- **Seguridad:** Leaflet se carga con huella SRI (`sw.js` → `marquesina-v5`).
 - **Repetidor de respaldo fuera de Cloudflare** (Deno Deploy) para que marquesina siga funcionando durante los bloqueos de LaLiga, que cortan IP de Cloudflare en Movistar, MasOrange, Vodafone y DIGI. La web prueba las tres direcciones a la vez y recuerda la que funciona ([docs/RESPALDO.md](docs/RESPALDO.md)) — #24. Montado en `marquesina.serbenda.deno.net` y probado con el bloqueo activo.
 - **`api.bendi.dev` ya funciona:** el DNS de bendi.dev está en Cloudflare y el worker responde en su dominio propio.
 - **Documentación:** referencia técnica con diagramas ([docs/REFERENCIA.md](docs/REFERENCIA.md)), código comentado archivo por archivo, normas para hacer cambios ([CONTRIBUTING.md](CONTRIBUTING.md)), seguridad ([SECURITY.md](SECURITY.md)), guía para asistentes de IA ([AGENTS.md](AGENTS.md)), plantillas de issues y PR, y README nuevo.

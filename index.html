@@ -29,7 +29,8 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Marquesina">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<!-- integrity: huella SRI oficial de cdnjs; si el archivo del CDN cambiara, el navegador no lo usaría -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" integrity="sha512-h9FcoyWjHcOcmEVkxOfTLnmZFWIH0iZhZT1H2TbOq55xssQGEJHEaIm+PgoUaZbRvQTNTluNOEfb1ZRy6D3BOw==" crossorigin="anonymous" referrerpolicy="no-referrer">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Figtree:wght@400;500;600&display=swap">
 <style>
@@ -255,7 +256,7 @@ input,select{font:15px var(--body);color:var(--fg);background:var(--bg);border:1
   </form>
 </dialog>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js" integrity="sha512-puJW3E/qXDqYp9IfhAI54BJEaWIfloJ7JWs7OeD5i6ruC9JZL1gERT1wjtwXFlh7CjE7ZJ+/vcRZRkIYIb6p4g==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 <script type="module">
 import { asArray, esc, crtmCode, fmtEta, status, fmtDist, fmtAge, parseEmt, parseCrtmTimes, parseCrtmVehicles,
          groupByLine, leaveInfo, bestLeave, parseNearest, parseEmtNear, mergeStops, stopNetwork } from "./logic.js";
@@ -347,11 +348,18 @@ async function getJson(url, ms = 10000){
     } catch { throw e; }
   }
 }
-// Al abrir la web: si la dirección guardada no contesta enseguida, se elige la más rápida de las tres
+// Al abrir la web se prueban los tres caminos A LA VEZ (3 peticiones pequeñas, sin esperas en serie).
+// Se prefiere el principal (api.bendi.dev): si otro contesta antes, se le dan 0,5 s más al principal.
+// Así, cuando termina un bloqueo, la web vuelve sola al camino directo.
 async function pickProxy(){
   const ping = p => getJsonOnce(`${p}/push/key`, 4000).then(j => { if (!j.publicKey) throw new Error(); return p; });
-  try { await ping(PROXY); return; } catch {}
-  try { useProxy(await Promise.any(PROXIES.filter(p => p !== PROXY).map(ping))); } catch {}
+  const pings = PROXIES.map(ping);
+  try {
+    const first = await Promise.any(pings);
+    if (first === PROXIES[0]) { useProxy(first); return; }
+    const primary = await Promise.race([pings[0].catch(() => null), new Promise(r => setTimeout(() => r(null), 500))]);
+    useProxy(primary || first);
+  } catch {}   // ninguno contesta: se queda el guardado y getJson() lo intentará en cada petición
 }
 const proxyReady = pickProxy();
 
@@ -365,6 +373,7 @@ async function arrivals(stop){
 // ---------- API del Consorcio (CRTM): interurbanos y urbanos de Alcobendas, Sanse, etc. ----------
 // Da tiempos de llegada por parada (GetStopsTimes) y, aparte, la posición GPS de los buses (GetLineLocation).
 // No admite llamadas directas desde otras webs (CORS), así que pasa por el proxy (worker.js).
+// Sin ".php" al final: el repetidor de Deno Deploy rechaza esas rutas (el worker añade ".php" él solo)
 const crtmUrl = (path) => `${PROXY}/crtm/${path}`;
 // Una sola petición por parada: el worker junta datos de la parada, tiempos y posición de los buses
 async function crtmArrivals(raw){
@@ -382,7 +391,7 @@ async function crtmArrivals(raw){
 async function crtmNearest(lat, lng, radius = 350){
   const base = PROXY;
   const [crtm, emt] = await Promise.allSettled([
-    getJson(crtmUrl(`GetNearestStopsByLocation.php?latitude=${lat.toFixed(5)}&longitude=${lng.toFixed(5)}&mode=&method=1&precision=${Math.round(radius)}`)).then(parseNearest),
+    getJson(crtmUrl(`GetNearestStopsByLocation?latitude=${lat.toFixed(5)}&longitude=${lng.toFixed(5)}&mode=&method=1&precision=${Math.round(radius)}`)).then(parseNearest),
     getJson(`${base}/emt/near/${lat.toFixed(5)}/${lng.toFixed(5)}/${Math.round(radius)}`).then(parseEmtNear),
   ]);
   if (crtm.status === "rejected" && emt.status === "rejected") throw new Error("Sin datos de paradas");

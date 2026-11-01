@@ -47,3 +47,11 @@ jobs:
         run: |
           curl -fsS --retry 2 --retry-delay 10 "https://marquesina.serbenda.deno.net/push/key" | grep -q '"publicKey"'
           echo "OK repetidor"
+
+      - name: Búsqueda de paradas a través del repetidor
+        # Prueba real por Deno Deploy (no simulada): Deno rechaza las rutas que acaban en ".php",
+        # así que la web y este chequeo piden la búsqueda sin ".php" (ver docs/OPERACIONES.md, INC-6).
+        run: |
+          body=$(curl -fsS --retry 2 --retry-delay 10 "https://marquesina.serbenda.deno.net/crtm/GetNearestStopsByLocation?latitude=40.54&longitude=-3.64&mode=&method=1&precision=500")
+          echo "$body" | grep -q '"stops"' || { echo "La búsqueda por el repetidor no devuelve paradas:"; echo "$body" | head -c 400; exit 1; }
+          echo "OK búsqueda por el repetidor"
