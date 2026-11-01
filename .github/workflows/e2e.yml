@@ -28,7 +28,8 @@ permissions:
 jobs:
   e2e:
     if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
-    runs-on: ubuntu-latest
+    # Ubuntu fijado: Playwright tarda en admitir cada versión nueva de ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     env:
       E2E_BASE: ${{ (github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.modo == 'local')) && '' || 'https://bendi.dev/marquesina/' }}
