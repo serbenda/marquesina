@@ -1,0 +1,10 @@
+# Configuración del worker para desplegarlo con wrangler desde GitHub Actions
+# (.github/workflows/worker.yml). Los secretos de EMT NO van aquí: viven en Cloudflare
+# (Worker > Settings > Variables and Secrets) y wrangler no los toca al desplegar.
+name = "marquesina"
+main = "worker.js"
+account_id = "81707420145ed400a786dcb658bedb6e"
+compatibility_date = "2025-01-01"
+workers_dev = true
+# Conserva las variables creadas desde el panel de Cloudflare
+keep_vars = true
