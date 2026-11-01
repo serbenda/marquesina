@@ -4,6 +4,7 @@ Lo más reciente, arriba. Cada entrada dice qué cambia para quien usa la web y 
 
 ## Sin publicar
 
+- **Repetidor de respaldo fuera de Cloudflare** (Deno Deploy) para que marquesina siga funcionando durante los bloqueos de LaLiga, que cortan IP de Cloudflare en Movistar, MasOrange, Vodafone y DIGI. La web prueba las tres direcciones a la vez y recuerda la que funciona ([docs/RESPALDO.md](docs/RESPALDO.md)).
 - **`api.bendi.dev` ya funciona:** el DNS de bendi.dev está en Cloudflare y el worker responde en su dominio propio.
 - **Documentación:** referencia técnica con diagramas ([docs/REFERENCIA.md](docs/REFERENCIA.md)), código comentado archivo por archivo, normas para hacer cambios ([CONTRIBUTING.md](CONTRIBUTING.md)), seguridad ([SECURITY.md](SECURITY.md)), guía para asistentes de IA ([AGENTS.md](AGENTS.md)), plantillas de issues y PR, y README nuevo.
 

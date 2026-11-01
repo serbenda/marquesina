@@ -9,6 +9,7 @@ flowchart TB
   Q -- "Entender por qué<br/>se hizo así" --> A["ARQUITECTURA.md"]
   Q -- "Hacer una tarea<br/>o arreglar algo" --> M["MANTENIMIENTO.md"]
   Q -- "api.bendi.dev o el DNS" --> D["DOMINIO.md"]
+  Q -- "No va durante el fútbol<br/>(bloqueo de LaLiga)" --> RS["RESPALDO.md"]
   Q -- "Cambiar el código" --> C["../CONTRIBUTING.md<br/>../AGENTS.md"]
 ```
 
@@ -19,6 +20,7 @@ flowchart TB
 | [ARQUITECTURA.md](ARQUITECTURA.md) | Quien quiere entender las decisiones | Piezas, fuentes de datos, por qué un proxy, seguridad, ideas pendientes |
 | [MANTENIMIENTO.md](MANTENIMIENTO.md) | Quien mantiene el servicio | Mobility Labs, Cloudflare, GitHub Pages, comprobaciones, errores y revisión periódica |
 | [DOMINIO.md](DOMINIO.md) | Quien toca el DNS | Por qué `api.bendi.dev`, registros, nameservers, pasos y vuelta atrás |
+| [RESPALDO.md](RESPALDO.md) | Quien mantiene el servicio | Repetidor en Deno Deploy para los bloqueos de LaLiga: por qué, cómo se monta y cómo se comprueba |
 
 En la raíz del repositorio:
 

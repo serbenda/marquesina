@@ -41,3 +41,9 @@ jobs:
         run: |
           curl -fsS --retry 2 --retry-delay 10 "https://marquesina.serbenda.workers.dev/push/key" | grep -q '"publicKey"'
           echo "OK workers.dev"
+
+      - name: Repetidor de respaldo (Deno Deploy)
+        # Fuera de Cloudflare, para los bloqueos de LaLiga (docs/RESPALDO.md). Comprueba que llega al worker.
+        run: |
+          curl -fsS --retry 2 --retry-delay 10 "https://marquesina.serbenda.deno.net/push/key" | grep -q '"publicKey"'
+          echo "OK repetidor"

@@ -12,6 +12,8 @@ Si encuentras un fallo de seguridad (por ejemplo, una forma de leer las claves d
 | Avisos activados (parada, horario, minutos) y la dirección de entrega de notificaciones | Durable Object del worker en Cloudflare | Nadie más; no incluye nombre, correo ni ubicación |
 | Tu ubicación (botón **Cerca de mí**) | No se guarda; solo se usa para pedir las paradas cercanas | El worker y las APIs de EMT y del Consorcio la reciben para buscar paradas. El worker guarda 1 día la lista de paradas de esa zona (redondeada a ~100 m), sin nada que te identifique |
 
+Si se usa el repetidor de respaldo ([docs/RESPALDO.md](docs/RESPALDO.md)), las mismas peticiones pasan por Deno Deploy, que no guarda nada más que sus registros de acceso habituales.
+
 No hay cuentas, cookies, analítica ni anuncios.
 
 ## Secretos

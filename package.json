@@ -5,7 +5,7 @@
   "description": "Tus autobuses de Madrid en el mapa, en tiempo real",
   "scripts": {
     "test": "node --test tests/*.test.js",
-    "check": "node --check worker.js && node --check sw.js && node --check logic.js && node --check push.js"
+    "check": "node --check worker.js && node --check sw.js && node --check logic.js && node --check push.js && node --check relay/relay.js"
   },
   "engines": {
     "node": ">=22"
