@@ -1,0 +1,11 @@
+# Avisa (con una Pull Request a development) cuando salga una versión nueva de las acciones
+# que usan los workflows (checkout, setup-node, wrangler-action…). El proyecto no tiene más dependencias.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    target-branch: development
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: "Actions"

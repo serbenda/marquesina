@@ -1,5 +1,8 @@
 name: Publicar en GitHub Pages
 
+# Publica la web (index.html, logic.js, push.js, sw.js, manifest y assets) en https://bendi.dev/marquesina/
+# cada vez que cambia main. No compila nada: sube el repositorio tal cual.
+
 on:
   push:
     branches: [main]

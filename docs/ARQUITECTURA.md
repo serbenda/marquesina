@@ -1,8 +1,8 @@
 # marquesina: arquitectura y mantenimiento
 
-Este documento explica cómo está montada marquesina, de dónde salen los datos y qué hay que hacer para mantenerla. Es la referencia para cualquier cambio. El [README](../README.md) cubre solo el uso, y los pasos concretos en Mobility Labs, Cloudflare y GitHub están en [MANTENIMIENTO.md](MANTENIMIENTO.md).
+Este documento explica cómo está montada marquesina, de dónde salen los datos y qué hay que hacer para mantenerla. Explica las decisiones de diseño; el detalle interno con diagramas está en [REFERENCIA.md](REFERENCIA.md). El [README](../README.md) es el resumen general, y los pasos concretos en Mobility Labs, Cloudflare y GitHub están en [MANTENIMIENTO.md](MANTENIMIENTO.md).
 
-> ¿Empiezas de cero? Lee primero la [guía paso a paso con diagramas](GUIA.md).
+> ¿Empiezas de cero? Lee primero la [guía paso a paso con diagramas](GUIA.md). Cómo funciona cada parte por dentro, con diagramas: [REFERENCIA.md](REFERENCIA.md).
 
 ## 1. Qué es
 

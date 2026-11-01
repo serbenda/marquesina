@@ -1,4 +1,21 @@
 <!doctype html>
+<!--
+  index.html — La web de marquesina (lo que ves en el móvil)
+  ==========================================================
+  Un único archivo con tres partes:
+    1. <head> y <style> ..... metadatos, app instalable (manifest) y todos los estilos.
+    2. <body> ............... la pantalla: barra superior, mapa, lista de paradas y diálogos
+                              (Ajustes, Zonas, Bienvenida y Editar parada).
+    3. <script type=module> . el comportamiento, por secciones marcadas con "// ---------- … ----------":
+         Configuración · Mapa · API EMT · API del Consorcio · Render · Ciclo de actualización · Ajustes ·
+         Editar una parada · Buscar paradas · Zonas · Cerca de mí · Bienvenida · Avisos · App instalable
+
+  No hay compilación ni dependencias que instalar: se publica tal cual en GitHub Pages.
+  Usa Leaflet (mapa, desde cdnjs), logic.js (cálculos) y push.js (solo unb64url).
+  Los datos de autobuses los pide al worker (worker.js); tus paradas se guardan en localStorage.
+
+  Cómo funciona por dentro, con diagramas: docs/REFERENCIA.md §4.
+-->
 <html lang="es">
 <head>
 <meta charset="utf-8">
@@ -16,6 +33,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Figtree:wght@400;500;600&display=swap">
 <style>
+/* Colores y medidas comunes. Rojo marquesina: #d6402b. */
 /* Layout: mapa arriba a pantalla completa, panel de llegadas tipo "marquesina" abajo (lateral en escritorio) */
 :root{
   --bg:#f3f5f7; --panel:#ffffff; --fg:#14202b; --muted:#5d6b78; --line:#dde3e9;
@@ -242,6 +260,12 @@ input,select{font:15px var(--body);color:var(--fg);background:var(--bg);border:1
 import { asArray, esc, crtmCode, fmtEta, status, fmtDist, fmtAge, parseEmt, parseCrtmTimes, parseCrtmVehicles,
          groupByLine, leaveInfo, bestLeave, parseNearest, parseEmtNear, mergeStops, stopNetwork } from "./logic.js";
 import { unb64url } from "./push.js";
+
+// =====================================================================================================
+// Comportamiento de la web. Cada sección empieza con "// ---------- Nombre ----------".
+// Flujo general: se leen los ajustes guardados → se crea el mapa → cada segundo tick() baja la cuenta
+// atrás → al llegar a 0, refresh() pide al worker cada parada y la pinta en cuanto llega.
+// =====================================================================================================
 
 // ---------- Configuración ----------
 // Worker de marquesina en Cloudflare (proxy de EMT y del Consorcio, y avisos). Fijo: no se configura.

@@ -2,7 +2,26 @@
 
 Pasos concretos para montar desde cero, revisar o reparar los servicios externos de marquesina: **Mobility Labs (EMT)**, **Cloudflare (worker)** y **GitHub Pages**. Cómo está diseñado todo se explica en [ARQUITECTURA.md](ARQUITECTURA.md).
 
-> ¿Empiezas de cero? Lee primero la [guía paso a paso con diagramas](GUIA.md).
+> ¿Empiezas de cero? Lee primero la [guía paso a paso con diagramas](GUIA.md). Cómo funciona cada parte por dentro: [REFERENCIA.md](REFERENCIA.md).
+
+```mermaid
+flowchart LR
+  subgraph EMT["Mobility Labs (§1)"]
+    E1["Cuenta serbenda"] --> E2["Aplicación marquesina<br/>X-ClientId · passKey"]
+  end
+  subgraph CF["Cloudflare (§2)"]
+    C1["Worker marquesina"] --> C2["Secretos EMT_*"]
+    C1 --> C3["Durable Object PushHub<br/>+ cron"]
+    C4["Zona bendi.dev<br/>(DNS)"] --> C1
+  end
+  subgraph GH["GitHub (§3)"]
+    G1["Repo marquesina"] --> G2["Pages"]
+    G1 --> G3["Secreto<br/>CLOUDFLARE_API_TOKEN"]
+  end
+  PB["Porkbun<br/>dominio bendi.dev"] -- "nameservers" --> C4
+  E2 -. "se copian como" .-> C2
+  G3 -- "despliega" --> C1
+```
 
 > **Regla de oro:** las claves de EMT (X-ClientId y passKey) **nunca** se ponen en `index.html`, en el repo, en un issue ni en un chat. Solo viven en Mobility Labs y como secretos del worker en Cloudflare.
 
@@ -154,13 +173,13 @@ El plan gratuito incluye los Durable Objects con almacenamiento SQLite y los cro
 
 **App instalada (service worker):** la página se pide siempre a la red primero, así que los cambios llegan solos. Si cambias `sw.js` o la lista de archivos que guarda, sube `VERSION` en `sw.js` (por ejemplo `marquesina-v2`) para que los móviles borren la caché anterior.
 
-### 3.4 Avisos del chequeo horario
+### 3.3 Avisos del chequeo horario
 El workflow **Chequeo de marquesina** (`healthcheck.yml`) comprueba cada hora la web, el Consorcio y EMT.
 - **Recibir el email si falla:** GitHub → tu perfil → **Settings** → **Notifications** → **System → Actions**: activa las notificaciones por email (*Only notify for failed workflows*).
 - **Ver qué ha fallado:** repo → **Actions** → la ejecución en rojo → el paso que falló muestra la respuesta recibida.
 - **Si deja de ejecutarse:** GitHub desactiva los workflows programados tras 60 días sin actividad en el repo. Reactívalo en **Actions** → *Chequeo de marquesina* → **Enable workflow**.
 
-### 3.3 Autoría de los commits
+### 3.4 Autoría de los commits
 Commits firmados como `Sergio Santiago Bendaña Quesada <serbenda@gmail.com>`. Los merges que hace GitHub al fusionar una PR usan el nombre del perfil de GitHub. Al fusionar se puede elegir el email en el desplegable *Commit email*.
 
 ---
@@ -184,6 +203,17 @@ Desde el navegador la ruta de EMT puede mostrar el JSON aunque CORS lo bloquee p
 
 ## 5. Errores del worker con EMT
 
+```mermaid
+flowchart TB
+  A["Abrir https://api.bendi.dev/emt/arrives/69"] --> B{"¿Qué sale?"}
+  B -- "JSON con code 00" --> OK["✅ EMT funciona.<br/>El problema está en la parada o en la web"]
+  B -- "Faltan los secretos…" --> S["Añadir los secretos (§2.4)"]
+  B -- "código 84, sin línea de cuenta" --> R["Añadir EMT_EMAIL y EMT_PASSWORD (§1.4)"]
+  B -- "84 y error de cuenta" --> P["Revisar email y contraseña,<br/>y la activación de la cuenta"]
+  B -- "Not found" --> D["Volver a desplegar el worker (§2.3)"]
+  B -- "No carga" --> N["¿Carga workers.dev?<br/>→ §6 y DOMINIO.md"]
+```
+
 | Respuesta de `/emt/arrives/…` | Significado | Qué hacer |
 |---|---|---|
 | `Faltan los secretos de EMT en el worker…` | No hay ninguna pareja configurada, o se configuraron sin pulsar Deploy | Paso 2.4 |
@@ -197,10 +227,24 @@ El worker devuelve el código que da EMT para cada forma de entrar, sin incluir 
 
 ---
 
-## 6 bis. "No se pudo conectar…" en una red concreta
+## 6. "No se pudo conectar…" en una red concreta
+
 Si la web funciona con datos móviles pero no en una red (casa, oficina), esa red puede bloquear `*.workers.dev`. La web prueba sola `api.bendi.dev` y `workers.dev`, así que basta con que una de las dos funcione. Si fallan las dos, revisar el filtro de esa red (Pi-hole, AdGuard, router, antivirus). Historia completa y diagnóstico en [DOMINIO.md](DOMINIO.md).
 
 ## 7. Avisos que no llegan
+
+```mermaid
+flowchart TB
+  A["No llega el aviso"] --> B{"¿Llega el<br/>aviso de prueba?"}
+  B -- "No" --> C{"¿iPhone?"}
+  C -- "Sí" --> D["Instalar la app y activar<br/>el aviso desde ella"]
+  C -- "No" --> E["Permitir notificaciones<br/>en el navegador"]
+  B -- "Sí" --> F{"¿Tiene minutos andando?"}
+  F -- "No" --> G["Ponerlos en Editar"]
+  F -- "Sí" --> H{"¿El día y la hora<br/>están dentro de la franja?"}
+  H -- "No" --> I["Ajustar la franja"]
+  H -- "Sí" --> J["Revisar el cron y los logs<br/>del worker (§2.8)"]
+```
 
 | Síntoma | Causa probable | Qué hacer |
 |---|---|---|

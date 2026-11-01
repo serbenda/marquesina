@@ -2,7 +2,7 @@
 
 Por qué el worker tiene una dirección propia, cómo se configuró y qué hacer si algo falla. La arquitectura general está en [ARQUITECTURA.md](ARQUITECTURA.md) y el mantenimiento diario en [MANTENIMIENTO.md](MANTENIMIENTO.md).
 
-> ¿Empiezas de cero? Lee primero la [guía paso a paso con diagramas](GUIA.md).
+> ¿Empiezas de cero? Lee primero la [guía paso a paso con diagramas](GUIA.md). Cómo funciona cada parte por dentro, con diagramas: [REFERENCIA.md](REFERENCIA.md).
 
 ## 1. El problema
 
@@ -65,11 +65,11 @@ Todos los registros de GitHub Pages deben ir en **DNS only** (nube gris), no *Pr
 | 1 | Añadir `bendi.dev` a Cloudflare, plan Free, importando registros | Cloudflare → *Add a domain* | ✅ Hecho |
 | 2 | Pasar a **DNS only** los 9 registros importados (4 A, 4 AAAA, 1 CNAME) | Cloudflare → bendi.dev → **DNS → Records** → seleccionar los registros → **Edit** (edición en bloque) → *Proxy status* apagado → *Save* | ✅ Hecho (9 de 9) |
 | 3 | Añadir el TXT de verificación de GitHub: nombre `_github-pages-challenge-serbenda`, valor `893263541f409edd80b575fb2892c9` | Cloudflare → DNS → Records → *Add record* | ✅ Hecho (10 registros en total, todos DNS only) |
-| 4 | Cambiar los nameservers a `hassan.ns.cloudflare.com` y `magali.ns.cloudflare.com` | Porkbun → *Domain Management* → bendi.dev → **Authoritative Nameservers** → *Edit* (borrar los 4 de Porkbun, poner los 2 de Cloudflare) → *Submit* | ⏳ Pendiente |
-| 5 | Esperar a que Cloudflare marque bendi.dev como **Active** (minutos a unas horas; llega un email) | Cloudflare → bendi.dev → Overview | ⏳ Pendiente |
-| 6 | Comprobar que `https://bendi.dev` y `https://bendi.dev/marquesina/` siguen cargando con candado | Navegador | ⏳ Pendiente |
-| 7 | **Fusionar la PR de `api.bendi.dev`** (solo con la zona *Active*: antes, el despliegue falla porque wrangler no puede crear el dominio) | GitHub | ⏳ Pendiente |
-| 8 | Comprobar que el workflow *Desplegar worker* termina en verde y que `https://api.bendi.dev/push/key` responde | GitHub Actions / navegador | ⏳ Pendiente |
+| 4 | Cambiar los nameservers a `hassan.ns.cloudflare.com` y `magali.ns.cloudflare.com` | Porkbun → *Domain Management* → bendi.dev → **Authoritative Nameservers** → *Edit* (borrar los 4 de Porkbun, poner los 2 de Cloudflare) → *Save Nameservers* | ✅ Hecho (1/11/2026, 18:50) |
+| 5 | Esperar a que Cloudflare marque bendi.dev como **Active** (minutos a unas horas; llega un email) | Cloudflare → bendi.dev → Overview (se puede forzar con *Check nameservers now*) | ✅ Active (1/11/2026, ~19:05) |
+| 6 | Comprobar que `https://bendi.dev` y `https://bendi.dev/marquesina/` siguen cargando con candado | Navegador | ✅ `bendi.dev/marquesina` carga igual |
+| 7 | **Fusionar la PR de `api.bendi.dev`** (mejor con la zona *Active*: antes, wrangler publica el worker pero la comprobación final falla porque el nombre aún no existe en Internet) | GitHub | ✅ Fusionada (#16), antes de que la zona estuviera *Active*: el despliegue publicó el worker, pero la comprobación falló con `Could not resolve host: api.bendi.dev` |
+| 8 | Comprobar que el workflow *Desplegar worker* termina en verde y que `https://api.bendi.dev/push/key` responde | GitHub Actions → *Desplegar worker en Cloudflare* → **Run workflow** / navegador | ✅ Relanzado con la zona *Active*: *Worker desplegado y respondiendo en api.bendi.dev y en workers.dev* |
 
 > Los pasos 2 y 3 se pueden hacer antes o después del 4, pero conviene hacerlos **antes**. Si se cambian los nameservers con los registros en *Proxied*, la web seguirá funcionando a través de Cloudflare, pero GitHub puede avisar de que el dominio no está bien configurado y fallar al renovar el certificado.
 
@@ -91,6 +91,7 @@ En GitHub: repo `serbenda.github.io` → **Settings → Pages** debe seguir most
 |---|---|---|
 | bendi.dev no carga o da error de certificado tras el cambio | Algún registro en *Proxied* o falta alguno | Revisar el §3: registros en **DNS only** y que estén todos |
 | GitHub Pages dice *"Domain's DNS record could not be retrieved"* | Propagación en curso o registros en *Proxied* | Esperar unas horas; revisar que estén en DNS only |
+| El paso *Comprobar que responde* falla con `Could not resolve host: api.bendi.dev` | La zona aún no está *Active* (los nameservers no se han cambiado o no se han propagado) | Esperar a *Active* y relanzar *Desplegar worker* (**Run workflow**). No hay nada roto: la web usa `workers.dev` mientras tanto |
 | El despliegue del worker falla con un error de dominio o zona | La zona aún no está *Active*, o el token no tiene permiso | Esperar a *Active* y relanzar; si persiste, crear un token nuevo con la plantilla *Edit Cloudflare Workers* y **All zones** (MANTENIMIENTO §2.7) |
 | `api.bendi.dev` no responde, pero `workers.dev` sí | Certificado aún emitiéndose (primeros minutos) | La web usa `workers.dev` sola mientras tanto; esperar |
 | Hay que deshacerlo todo | — | En Porkbun, volver a poner los 4 nameservers de Porkbun (§3). Los registros siguen allí, no se han borrado. La web seguirá funcionando con `workers.dev` |

@@ -1,31 +1,60 @@
-// Proxy y avisos de marquesina (Cloudflare Workers, plan gratuito).
-//
-//  /crtm/<Get*.php>?...   -> API del Consorcio de Transportes (www.crtm.es/widgets/api): tiempos y
-//                            posición de interurbanos, urbanos de otros municipios y Metro.
-//                            El Consorcio no permite llamadas desde otras webs (CORS).
-//  /crtm/stop/<parada>    -> Todo lo de una parada del Consorcio en una sola respuesta: datos de la
-//                            parada, tiempos (GetStopsTimes) y posición GPS de los buses de cada línea
-//                            (GetLinesInformation + GetLineLocation). Ahorra peticiones a la web.
-//  /emt/near/<lat>/<lon>/<radio> -> Paradas de EMT cercanas (API de EMT): incluye las que el Consorcio
-//                            no tiene, como las de El Pardo.
-//  /emt/arrives/<parada>  -> Llegadas de EMT Madrid (con posición GPS de cada bus). El worker inicia
-//                            sesión en Mobility Labs, así nadie tiene que registrarse.
-//  /push/key              -> Clave pública VAPID para suscribirse a las notificaciones.
-//  /push/subscribe        -> (POST) Guarda o actualiza una suscripción y sus avisos.
-//  /push/unsubscribe      -> (POST) Borra una suscripción.
-//  /push/test             -> (POST) Envía una notificación de prueba a una suscripción.
-//  Cron (cada minuto)     -> Revisa los avisos activos y envía "Sal ya" cuando toca.
-//
-// Las suscripciones viven en un Durable Object (PushHub, almacenamiento SQLite del plan gratuito).
-// Secretos (Cloudflare > Worker > Settings > Variables and Secrets), al menos una pareja:
-//   EMT_CLIENT_ID + EMT_PASSKEY   -> claves de la aplicación marquesina en Mobility Labs (preferido)
-//   EMT_EMAIL + EMT_PASSWORD      -> cuenta de Mobility Labs (respaldo, p. ej. con el código 84)
-//
-// Despliegue: automático desde GitHub (.github/workflows/worker.yml, con wrangler.toml).
+/**
+ * worker.js — El "intermediario" de marquesina (Cloudflare Worker, plan gratuito)
+ * ================================================================================
+ *
+ * QUÉ ES
+ *   Un programa pequeño que vive en los servidores de Cloudflare. La web le pide datos y él se los pide
+ *   a EMT y al Consorcio. Además guarda los avisos y, cada minuto, envía "¡Sal ya!" cuando toca.
+ *
+ * POR QUÉ HACE FALTA (y la web no va directa a las fuentes)
+ *   - El Consorcio no deja que otras webs le pidan datos desde el navegador (CORS).
+ *   - EMT pide usuario y contraseña: si estuvieran en la web, cualquiera podría verlos.
+ *   - Juntar varias peticiones en una y guardar respuestas un rato hace la web más rápida.
+ *
+ * DIRECCIONES (las dos llegan a este mismo código)
+ *   https://api.bendi.dev                         principal (dominio propio, ver docs/DOMINIO.md)
+ *   https://marquesina.serbenda.workers.dev       alternativa (algunas redes bloquean *.workers.dev)
+ *
+ * RUTAS
+ *   GET  /crtm/stop/<parada>             Todo de una parada del Consorcio en una respuesta: nombre y
+ *                                        posición (GetStops), llegadas (GetStopsTimes) y posición GPS de
+ *                                        los buses (GetLinesInformation + GetLineLocation).
+ *   GET  /crtm/<Get*.php>?...            Proxy directo a la API del Consorcio (www.crtm.es/widgets/api).
+ *   GET  /emt/near/<lat>/<lon>/<radio>   Paradas de EMT cercanas (incluye las que el Consorcio no tiene,
+ *                                        como las de El Pardo).
+ *   GET  /emt/arrives/<parada>           Llegadas de EMT con posición GPS. El worker inicia sesión.
+ *   GET  /push/key                       Clave pública para suscribirse a los avisos.
+ *   POST /push/subscribe                 Guarda o actualiza una suscripción y sus avisos.
+ *   POST /push/unsubscribe               Borra una suscripción.
+ *   POST /push/test                      Envía una notificación de prueba.
+ *   Cron cada minuto                     Revisa los avisos activos y envía los que tocan.
+ *
+ * SECCIONES DE ESTE ARCHIVO
+ *   1. Configuración ................. constantes y cabeceras CORS
+ *   2. EMT ........................... emtLogin, emtArrivals, emtNear, emtArrivalsCached
+ *   3. Consorcio ..................... crtmFetch, pool, últimos datos buenos, crtmItineraries, crtmStop
+ *   4. Avisos: validación ............ cleanAlerts, subId
+ *   5. Durable Object PushHub ........ suscripciones (fetch) y revisión del cron (check)
+ *   6. Entrada del worker ............ fetch (enrutado) y scheduled (cron)
+ *
+ * SECRETOS (Cloudflare → Worker marquesina → Settings → Variables and Secrets), al menos una pareja:
+ *   EMT_CLIENT_ID + EMT_PASSKEY   claves de la aplicación marquesina en Mobility Labs (se prueba primero)
+ *   EMT_EMAIL + EMT_PASSWORD      cuenta de Mobility Labs (respaldo, p. ej. con el código 84)
+ *   Nunca se escriben en el código ni en el repo.
+ *
+ * DESPLIEGUE
+ *   Automático al fusionar en main (.github/workflows/worker.yml, con wrangler.toml).
+ *
+ * Diagramas de cada ruta y de las cachés: docs/REFERENCIA.md §6 y §7.
+ */
 
 import { DurableObject } from "cloudflare:workers";
 import { parseEmt, parseCrtmTimes, parseCrtmVehicles, bestLeave, alertActive, leaveMessage, crtmCode, asArray } from "./logic.js";
 import { generateVapidKeys, sendPush, isPushEndpoint } from "./push.js";
+
+// =====================================================================================================
+// 1. Configuración
+// =====================================================================================================
 
 const EMT = "https://openapi.emtmadrid.es";
 const CRTM = "https://www.crtm.es/widgets/api";
@@ -34,6 +63,7 @@ const CACHE_SECONDS = 10;      // las fuentes refrescan cada ~15-30 s: más no a
 const MAX_ALERTS = 10;          // avisos por suscripción
 const MAX_SUBSCRIPTIONS = 1000; // suscripciones en total
 
+// Cabeceras CORS: solo bendi.dev y serbenda.github.io pueden leer las respuestas desde el navegador
 function corsHeaders(req) {
   const origin = req.headers.get("Origin");
   return {
@@ -45,18 +75,32 @@ function corsHeaders(req) {
   };
 }
 
+// Respuesta JSON con su código HTTP y cabeceras
 const json = (obj, status = 200, cors = {}) =>
   new Response(JSON.stringify(obj), { status, headers: { ...cors, "Content-Type": "application/json; charset=utf-8" } });
 
+// Copia una respuesta añadiéndole las cabeceras CORS (las del Durable Object no las traen)
 const withCors = (res, cors) => {
   res = new Response(res.body, res);
   for (const [k, v] of Object.entries(cors)) res.headers.set(k, v);
   return res;
 };
 
+// =====================================================================================================
+// 2. EMT Madrid (Mobility Labs)
+// =====================================================================================================
+
 // ---------- Sesión de EMT (se reutiliza mientras el worker siga activo) ----------
+// El token vive en la memoria de esta instancia. Cloudflare puede crear instancias nuevas cuando quiera:
+// entonces simplemente se vuelve a iniciar sesión.
 let emtToken = null, emtTokenExp = 0;
 
+/**
+ * Devuelve un token de EMT válido. Prueba primero las claves de la aplicación y, si fallan, la cuenta.
+ * @param {object} env    Secretos del worker.
+ * @param {boolean} force true = pedir un token nuevo aunque haya uno guardado (tras un 401).
+ * @throws Con el código de EMT de cada intento si no se pudo entrar (p. ej. "aplicación: código 84").
+ */
 async function emtLogin(env, force = false) {
   if (!force && emtToken && Date.now() < emtTokenExp) return emtToken;
 
@@ -82,6 +126,7 @@ async function emtLogin(env, force = false) {
   throw new Error(`EMT rechazó el inicio de sesión (${errors.join("; ")})`);
 }
 
+/** Llegadas a una parada de EMT. Si el token ha caducado (401), lo renueva y reintenta una vez. */
 async function emtArrivals(stop, env) {
   const today = new Date().toISOString().slice(0, 10).replace(/-/g, "");
   const body = JSON.stringify({
@@ -135,6 +180,10 @@ async function emtArrivalsCached(stop, env, ctx) {
   }
   return data;
 }
+
+// =====================================================================================================
+// 3. Consorcio Regional de Transportes (CRTM)
+// =====================================================================================================
 
 // ---------- Parada del Consorcio completa ----------
 // El Consorcio a veces responde con error (502/500, o una página HTML) cuando le llegan muchas peticiones
@@ -200,6 +249,15 @@ function crtmItineraries(codLine) {
 const VEHICLES_WAIT_MS = 2500;
 const lastVehicles = new Map();   // parada -> {at, list}
 
+/**
+ * Todo lo de una parada del Consorcio en una respuesta: {stop:{name,pos}, stopTimes, vehicles, stale?}.
+ * 1. Pide a la vez el nombre (GetStops, 1 día) y las llegadas (GetStopsTimes, 10 s).
+ *    Si el Consorcio falla, devuelve los últimos datos buenos con stale:true, o lanza el error.
+ * 2. Para cada línea y sentido de autobús busca su recorrido y la posición de sus buses (3 a la vez).
+ * 3. Si las posiciones tardan más de 2,5 s, usa las de hace menos de 1 min y termina en segundo plano.
+ * 4. Guarda el resultado como "últimos datos buenos" (15 min).
+ * Diagrama: docs/REFERENCIA.md §6.6.
+ */
 async function crtmStop(code, ctx) {
   let info, times;
   try {
@@ -243,7 +301,10 @@ async function crtmStop(code, ctx) {
   return result;
 }
 
-// ---------- Avisos: validación de lo que manda la web ----------
+// =====================================================================================================
+// 4. Avisos: validación de lo que manda la web
+// =====================================================================================================
+// Nunca se confía en lo que llega del navegador: se recorta, se limita y se descarta lo que no vale.
 const TIME = /^([01]\d|2[0-3]):[0-5]\d$/;
 function cleanAlerts(list) {
   if (!Array.isArray(list)) return [];
@@ -261,11 +322,18 @@ function cleanAlerts(list) {
   })).filter(a => a.id && a.stop && a.walk && a.days.length);
 }
 
+// Identificador corto y estable de una suscripción: 24 caracteres hex del SHA-256 de su dirección
 const subId = async endpoint =>
   [...new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(endpoint)))]
     .slice(0, 12).map(b => b.toString(16).padStart(2, "0")).join("");
 
-// ---------- Durable Object: suscripciones y envío de avisos ----------
+// =====================================================================================================
+// 5. Durable Object PushHub: suscripciones y envío de avisos
+// =====================================================================================================
+// Un único objeto ("hub") con almacenamiento propio. Claves que guarda:
+//   "vapid"        {publicKey, privateJwk}  — se crea sola la primera vez; NO borrarla
+//   "sub:<id>"     {subscription, alerts, updated}
+//   "sent"         {"<sub>|<aviso>|<línea>|<bus>": fecha}  — para no avisar dos veces del mismo bus
 export class PushHub extends DurableObject {
   async vapid() {
     let v = await this.ctx.storage.get("vapid");
@@ -354,9 +422,15 @@ export class PushHub extends DurableObject {
   }
 }
 
+// =====================================================================================================
+// 6. Entrada del worker
+// =====================================================================================================
+
+// Siempre el mismo Durable Object, llamado "hub"
 const hub = env => env.PUSH.get(env.PUSH.idFromName("hub"));
 
 export default {
+  // Cada petición HTTP: se mira la ruta y se manda a su función (diagrama: docs/REFERENCIA.md §6.1)
   async fetch(req, env, ctx) {
     const cors = corsHeaders(req);
     if (req.method === "OPTIONS") return new Response(null, { headers: cors });
