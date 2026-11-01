@@ -65,7 +65,7 @@ Metro Ligero no devuelve tiempos en la API del Consorcio; Cercanías aparece en 
 
 ```mermaid
 flowchart LR
-  U[Navegador<br/>index.html] -- "/emt/… y /crtm/…" --> W[Proxy en Cloudflare<br/>worker.js]
+  U[Navegador<br/>index.html] -- "api.bendi.dev<br/>(o workers.dev)" --> W[Worker en Cloudflare<br/>worker.js]
   W -- "claves de la app (secretos)" --> EMT[(API EMT Madrid)]
   W --> CRTM[(API Consorcio de Transportes)]
   W -- "cron cada minuto" --> DO[(Durable Object<br/>avisos)]
@@ -106,7 +106,8 @@ marquesina/
 ├── package.json                Solo para "npm test" (sin dependencias)
 ├── docs/
 │   ├── ARQUITECTURA.md         Diseño, fuentes de datos y funcionamiento interno
-│   └── MANTENIMIENTO.md        Puesta en marcha y mantenimiento paso a paso
+│   ├── MANTENIMIENTO.md        Puesta en marcha y mantenimiento paso a paso
+│   └── DOMINIO.md              Dominio propio api.bendi.dev y DNS de bendi.dev
 ├── .github/workflows/
 │   ├── pages.yml               Publica la web en GitHub Pages (push a main)
 │   ├── tests.yml               Ejecuta los tests en cada PR y push
@@ -151,6 +152,7 @@ Los pasos detallados (Cloudflare, secretos, Mobility Labs, comprobaciones) está
 | Documento | Para qué |
 |---|---|
 | [docs/ARQUITECTURA.md](docs/ARQUITECTURA.md) | Cómo está montado: piezas, APIs, datos guardados, proxy, seguridad |
+| [docs/DOMINIO.md](docs/DOMINIO.md) | Dominio propio `api.bendi.dev`: por qué, DNS de bendi.dev en Cloudflare, pasos, comprobaciones y vuelta atrás |
 | [docs/MANTENIMIENTO.md](docs/MANTENIMIENTO.md) | Cómo ponerlo en marcha y mantenerlo: Mobility Labs, Cloudflare, GitHub Pages, comprobaciones y errores |
 
 ## Limitaciones conocidas

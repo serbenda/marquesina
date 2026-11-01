@@ -7,7 +7,7 @@ Este documento explica cómo está montada marquesina, de dónde salen los datos
 Una web estática que muestra en un mapa los autobuses que van a llegar a las paradas que elige el usuario, con los minutos que faltan, y se actualiza sola cada 15 s por defecto (10 s, 30 s o 1 min a elegir).
 
 - **Web:** https://bendi.dev/marquesina/ (GitHub Pages, repo `serbenda/marquesina`).
-- **Proxy:** https://marquesina.serbenda.workers.dev (Cloudflare Workers, cuenta de serbenda).
+- **Worker (proxy y avisos):** **https://api.bendi.dev** (dirección principal) y https://marquesina.serbenda.workers.dev (alternativa), las dos apuntan al mismo worker de Cloudflare. La web usa la primera y, si no responde, la segunda. Ver [DOMINIO.md](DOMINIO.md).
 - **No hay servidor propio ni base de datos.** Los ajustes de cada usuario se guardan en su navegador.
 
 ## 2. Piezas
@@ -51,7 +51,7 @@ flowchart LR
 - **Qué cubre:** interurbanos (151, 153, 158, 827…) y urbanos de otros municipios (Alcobendas, San Sebastián de los Reyes…). Sus paradas tienen código `8_XXXXX`; en la web se escriben solo las 5 cifras.
 - **Qué da:** tiempo de llegada por parada y **posición GPS de los autobuses** de cada línea (`GetLineLocation`). En el mapa los buses aparecen como en EMT y la parada lleva además una etiqueta con las 3 próximas llegadas.
 - **Acceso:** sin registro, pero **no admite CORS**: el navegador no puede llamarla desde otra web. Por eso pasa por el worker.
-- **Llamadas** (siempre vía `https://marquesina.serbenda.workers.dev/crtm/...`):
+- **Llamadas** (siempre vía el worker: `https://api.bendi.dev/crtm/...`):
   - `GetStops.php?codStop=8_06756`: nombre y coordenadas de la parada. Se guarda en caché en memoria mientras la página está abierta.
   - `GetStopsTimes.php?codStop=8_06756&type=1&orderBy=2&stopTimesByIti=3`: próximas llegadas (`stopTimes.times.Time[]`, con `line.shortDescription`, `destination`, `time` en ISO y `codIssue`).
   - `GetNearestStopsByLocation.php?latitude=..&longitude=..&mode=&method=1&precision=350`: paradas cercanas a un punto. Lo usan los botones **Buscar paradas** (punto tocado en el mapa) y **Cerca de mí** (ubicación del navegador; se quedan las 3 más cercanas).
@@ -122,7 +122,7 @@ Teselas de OpenStreetMap (`tile.openstreetmap.org`) con atribución. Para un uso
 - `sw.js` (service worker):
   - **La página:** primero red; si no hay conexión, la última guardada.
   - **Librerías, fuentes e iconos:** primero caché.
-  - **Datos del worker (`*.workers.dev`) y teselas de OpenStreetMap:** nunca se guardan, siempre en vivo.
+  - **Datos del worker (`api.bendi.dev` y `*.workers.dev`) y teselas de OpenStreetMap:** nunca se guardan, siempre en vivo.
   - `VERSION` identifica la caché. Al cambiarla, el service worker nuevo borra la anterior.
 - **Instalar:** en Android y escritorio aparece el botón *Instalar* (evento `beforeinstallprompt`). En iPhone se muestra una vez el aviso de *Compartir → Añadir a pantalla de inicio*.
 

@@ -10,7 +10,8 @@ Pasos concretos para montar desde cero, revisar o reparar los servicios externos
 |---|---|
 | Web | https://bendi.dev/marquesina/ |
 | Repo | https://github.com/serbenda/marquesina |
-| Worker | `marquesina`, en https://marquesina.serbenda.workers.dev |
+| Worker | `marquesina`, en **https://api.bendi.dev** y en https://marquesina.serbenda.workers.dev (alternativa). Ver [DOMINIO.md](DOMINIO.md) |
+| DNS de bendi.dev | Cloudflare (nameservers `hassan` y `magali.ns.cloudflare.com`); el dominio sigue registrado en Porkbun |
 | Panel de Cloudflare | https://dash.cloudflare.com |
 | Portal de EMT | https://mobilitylabs.emtmadrid.es |
 | Aplicación en EMT | `marquesina` (cuenta de serbenda) |
@@ -168,9 +169,10 @@ Abre estas URLs en el navegador:
 
 | Qué se comprueba | URL | Resultado esperado |
 |---|---|---|
-| Worker y Consorcio | `https://marquesina.serbenda.workers.dev/crtm/GetStops.php?codStop=8_06756` | JSON con `"MARQUÉS VALDAVIA"` |
-| Worker y EMT (secretos) | `https://marquesina.serbenda.workers.dev/emt/arrives/69` | JSON con `"code":"00"` y llegadas en `data[0].Arrive` |
-| Avisos (clave VAPID) | `https://marquesina.serbenda.workers.dev/push/key` | JSON con `publicKey` (87 caracteres) |
+| Worker y Consorcio | `https://api.bendi.dev/crtm/GetStops.php?codStop=8_06756` | JSON con `"MARQUÉS VALDAVIA"` |
+| Worker y EMT (secretos) | `https://api.bendi.dev/emt/arrives/69` | JSON con `"code":"00"` y llegadas en `data[0].Arrive` |
+| Avisos (clave VAPID) | `https://api.bendi.dev/push/key` | JSON con `publicKey` (87 caracteres) |
+| Dirección alternativa | `https://marquesina.serbenda.workers.dev/push/key` | La misma clave |
 | Web publicada | `https://bendi.dev/marquesina/?v=N` | Etiqueta **En vivo** y paradas de Alcobendas |
 | Aviso real | En la web: *Editar* parada → *Avisarme para salir* → **Enviar aviso de prueba** | Llega la notificación "Marquesina: avisos activados" |
 
@@ -192,6 +194,9 @@ Desde el navegador la ruta de EMT puede mostrar el JSON aunque CORS lo bloquee p
 El worker devuelve el código que da EMT para cada forma de entrar, sin incluir nunca las claves ni la contraseña.
 
 ---
+
+## 6 bis. "No se pudo conectar…" en una red concreta
+Si la web funciona con datos móviles pero no en una red (casa, oficina), esa red puede bloquear `*.workers.dev`. La web prueba sola `api.bendi.dev` y `workers.dev`, así que basta con que una de las dos funcione. Si fallan las dos, revisar el filtro de esa red (Pi-hole, AdGuard, router, antivirus). Historia completa y diagnóstico en [DOMINIO.md](DOMINIO.md).
 
 ## 7. Avisos que no llegan
 

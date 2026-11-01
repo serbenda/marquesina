@@ -5,7 +5,10 @@ name = "marquesina"
 main = "worker.js"
 account_id = "81707420145ed400a786dcb658bedb6e"
 compatibility_date = "2025-01-01"
+# Dos direcciones: la de Cloudflare (marquesina.serbenda.workers.dev) y la propia (api.bendi.dev).
+# api.bendi.dev requiere que el DNS de bendi.dev esté en Cloudflare (zona activa); wrangler crea el registro solo.
 workers_dev = true
+routes = [{ pattern = "api.bendi.dev", custom_domain = true }]
 # Conserva las variables creadas desde el panel de Cloudflare
 keep_vars = true
 

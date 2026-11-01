@@ -21,18 +21,23 @@ jobs:
 
       - name: Consorcio a través del worker
         run: |
-          body=$(curl -fsS --retry 2 --retry-delay 10 "https://marquesina.serbenda.workers.dev/crtm/GetStopsTimes.php?codStop=8_06756&type=1&orderBy=2&stopTimesByIti=3")
+          body=$(curl -fsS --retry 2 --retry-delay 10 "https://api.bendi.dev/crtm/GetStopsTimes.php?codStop=8_06756&type=1&orderBy=2&stopTimesByIti=3")
           echo "$body" | grep -q '"stopTimes"' || { echo "Respuesta inesperada del Consorcio:"; echo "$body" | head -c 400; exit 1; }
           echo "OK Consorcio"
 
       - name: EMT a través del worker
         run: |
-          body=$(curl -sS --retry 2 --retry-delay 10 "https://marquesina.serbenda.workers.dev/emt/arrives/69")
+          body=$(curl -sS --retry 2 --retry-delay 10 "https://api.bendi.dev/emt/arrives/69")
           echo "$body" | grep -q '"code":"00"' || { echo "EMT no responde bien:"; echo "$body" | head -c 400; exit 1; }
           echo "OK EMT"
 
       - name: Avisos (clave VAPID del worker)
         run: |
-          body=$(curl -fsS --retry 2 --retry-delay 10 "https://marquesina.serbenda.workers.dev/push/key")
+          body=$(curl -fsS --retry 2 --retry-delay 10 "https://api.bendi.dev/push/key")
           echo "$body" | grep -q '"publicKey"' || { echo "El worker no devuelve la clave de los avisos:"; echo "$body" | head -c 400; exit 1; }
           echo "OK avisos"
+
+      - name: Dirección alternativa (workers.dev)
+        run: |
+          curl -fsS --retry 2 --retry-delay 10 "https://marquesina.serbenda.workers.dev/push/key" | grep -q '"publicKey"'
+          echo "OK workers.dev"
