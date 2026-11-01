@@ -587,7 +587,7 @@ document.getElementById("list").addEventListener("click", e=>{
   const m = cfg.meta[editing] || {};
   const [net, id] = editing.split(":");
   document.getElementById("stopDlgTitle").textContent = m.alias || b.dataset.name;
-  document.getElementById("stopDlgSub").textContent = `${b.dataset.name} · ${net === "emt" ? "EMT Madrid" : "Consorcio"} ${id}`;
+  document.getElementById("stopDlgSub").textContent = `${b.dataset.name} · ${net === "emt" ? "EMT" : stopNetwork(crtmCode(id))} ${id.replace(/^\d+_/,"")}`;
   fAlias.value = m.alias || ""; fWalk.value = m.walk || ""; fFav.checked = !!m.fav;
   const al = cfg.alerts[editing] || {};
   fAlertOn.checked = !!al.on;
