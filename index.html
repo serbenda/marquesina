@@ -421,7 +421,7 @@ function renderList(){
     const rows = groupByLine(s.buses, elapsedOf(s)).map(g=>{
       const first = g.items[0], e = fmtEta(first.eta);
       const more = g.items.slice(1,3).map(b=>fmtEta(b.eta).txt + "′").join(" · ");
-      const detail = s.crtm ? (first.live ? "En directo (GPS)" : "Según horario") : (fmtDist(first.dist) || "sin posición");
+      const detail = s.crtm ? (first.mode === "4" ? "Próximo tren" : first.live ? "En directo (GPS)" : "Según horario") : (fmtDist(first.dist) || "sin posición");
       return `<div class="row" data-key="${esc(first.key)}" data-line="${esc(g.line)}" data-stop="${esc(s.id)}">
         <div class="badge" style="background:${colorFor(g.line, g.mode)}">${esc(g.line)}</div>
         <div class="dest"><b>${esc(g.dest)}</b><small>${detail}${more ? ` · <span class="next">luego ${more}</span>` : ""}</small></div>
