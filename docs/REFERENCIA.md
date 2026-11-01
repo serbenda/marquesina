@@ -903,6 +903,8 @@ flowchart TB
 | `pickProxy` | 4 s por camino (los tres a la vez) + 0,5 s de preferencia por `api.bendi.dev` | `index.html` | Elección del camino al abrir |
 | Plazo del repetidor | 24 s | `relay/relay.js` | Tiempo total para llegar al worker |
 | Espera de la búsqueda de paradas | 25 s | `index.html` (`crtmNearest`) | La búsqueda del Consorcio es lenta (4–10 s) |
+| Espera de los minutos de una parada del Consorcio | 15 s | `index.html` (`crtmArrivals`) | El Consorcio va a rachas (1–9 s) |
+| Nombre y posición de la parada, recorridos de las líneas | 1 día (Cache API) | `worker.js` (`crtmGetDaily`) | Casi no cambian |
 | Búsquedas, paradas y líneas del Consorcio guardadas | 1 día | `worker.js` | Las paradas casi no cambian |
 | Cuerpo máximo del repetidor | 16 KB | `relay/relay.js` | Tamaño de los POST de avisos |
 

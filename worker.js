@@ -205,6 +205,21 @@ async function crtmFetch(pathAndQuery, ttl = CACHE_SECONDS) {
 }
 const crtmGet = async (path, ttl = CACHE_SECONDS) => JSON.parse(await crtmFetch(path, ttl));
 
+// Datos que casi no cambian (nombre y posición de la parada, recorridos de las líneas): 1 día en la Cache API,
+// compartida por todas las instancias del worker. El Consorcio tarda a veces varios segundos en darlos.
+async function crtmGetDaily(path, ctx) {
+  const cache = globalThis.caches && caches.default;
+  const key = new Request(`https://cache.marquesina/crtm-daily/${path}`);
+  try { const hit = cache && await cache.match(key); if (hit) return hit.json(); } catch {}
+  const text = await crtmFetch(path, 86400);
+  const data = JSON.parse(text);
+  if (cache) {
+    const put = cache.put(key, new Response(text, { headers: { "Content-Type": "application/json", "Cache-Control": "max-age=86400" } })).catch(() => {});
+    ctx && ctx.waitUntil ? ctx.waitUntil(put) : await put;
+  }
+  return data;
+}
+
 // Pide en paralelo como mucho "n" a la vez (para no saturar al Consorcio)
 async function pool(items, n, fn) {
   const out = new Array(items.length);
@@ -231,7 +246,7 @@ async function readLastGood(code) {
 const lineCache = new Map();
 function crtmItineraries(codLine) {
   if (!lineCache.has(codLine)) {
-    lineCache.set(codLine, crtmGet(`GetLinesInformation.php?activeItinerary=1&codLine=${encodeURIComponent(codLine)}`, 86400)
+    lineCache.set(codLine, crtmGetDaily(`GetLinesInformation.php?activeItinerary=1&codLine=${encodeURIComponent(codLine)}`)
       .then(j => {
         const info = asArray(j.lines && j.lines.LineInformation)[0] || {};
         return asArray(info.itinerary && info.itinerary.Itinerary).map(it => ({
@@ -263,7 +278,7 @@ async function crtmStop(code, ctx) {
   let info, times;
   try {
     [info, times] = await Promise.all([
-      crtmGet(`GetStops.php?codStop=${code}`, 86400).catch(() => ({})),
+      crtmGetDaily(`GetStops.php?codStop=${code}`, ctx).catch(() => ({})),
       crtmGet(`GetStopsTimes.php?codStop=${code}&type=1&orderBy=2&stopTimesByIti=3`),
     ]);
   } catch (e) {

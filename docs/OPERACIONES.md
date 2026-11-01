@@ -365,6 +365,23 @@ Formato sin culpables (*blameless*): qué pasó, por qué y qué se cambió para
 - **Prevención:** test de la caché en `worker.test.js`.
 - **Lección:** medir los tiempos reales de cada dependencia antes de fijar límites de espera.
 
+#### Prueba de campo tras INC-7 (1 nov, 20:40, con el bloqueo activo y a través del repetidor)
+
+| Sitio | Búsqueda | Paradas encontradas | Minutos de prueba |
+|---|---|---|---|
+| San Sebastián de los Reyes | 7,3 s | 105 de autobús + 1 Metro | ✅ 154C, 827, 4, 7 · Metro L10 |
+| Alcobendas | 4,1 s | 49 de autobús + 1 Metro | ✅ 153, 10, 828, 158, 827, 151 · Metro L10 |
+| Colmenar Viejo | 5,5 s | 36 de autobús | ✅ 724, 1, 725, 721, 726 |
+| El Pardo | 0,2 s | 7 de EMT | ✅ 164, 179 |
+| Madrid · Sol | 4,9 s | 213 EMT + 12 Metro + 4 Cercanías | ✅ Metro L1/L5 · EMT M3 |
+| Madrid · Moncloa | 5,0 s | 124 EMT + 92 interurbanos + 6 Metro | ✅ EMT 164, 133 · Metro L3 · 573 |
+| Madrid · Chamartín | 9,2 s | 89 EMT + 12 interurbanos + 3 Metro + 10 Cercanías | ✅ EMT 5 · Metro L1/L10 · 154 |
+| Tres Cantos | 0,9 s | 54 de autobús + 1 Cercanías | ✅ 712, 3, 827, 5 |
+| Getafe | 1,3 s | 107 de autobús + 1 Metro + 2 Cercanías | ✅ 1, 4, 450, 3B · Metro L12 |
+| Alcalá de Henares | 2,1 s | 96 de autobús | ✅ 8, 5, 2 |
+
+Las búsquedas repetidas en la misma zona tardan milisegundos (caché de 1 día). Los minutos de una parada del Consorcio tardaron entre 1 y 9 s la primera vez; por eso la web espera ahora hasta 15 s y el worker guarda 1 día el nombre de cada parada y los recorridos de las líneas.
+
 ## 12. Mejoras de fiabilidad pendientes
 
 | Mejora | Qué resuelve | Esfuerzo |
