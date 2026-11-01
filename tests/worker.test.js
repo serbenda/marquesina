@@ -138,3 +138,32 @@ test("PushHub rechaza suscripciones a URLs que no son servicios de push", async 
   }) }));
   assert.equal(res.status, 400);
 });
+
+test("/crtm/stop junta parada, tiempos y posición de los buses en una sola respuesta", async (t) => {
+  const times = JSON.parse(readFileSync(new URL("./fixtures/crtm-stoptimes-06756.json", import.meta.url), "utf8"));
+  const loc = JSON.parse(readFileSync(new URL("./fixtures/crtm-linelocation-153.json", import.meta.url), "utf8"));
+  const calls = [];
+  t.mock.method(globalThis, "fetch", async (url) => {
+    url = String(url); calls.push(url);
+    if (url.includes("GetStops.php")) return Response.json({ stops: { Stop: { name: "MARQUÉS VALDAVIA", coordinates: { latitude: 40.54, longitude: -3.63 } } } });
+    if (url.includes("GetStopsTimes")) return Response.json(times);
+    if (url.includes("GetLinesInformation")) {
+      const cod = decodeURIComponent(url.match(/codLine=([^&]+)/)[1]);
+      return Response.json({ lines: { LineInformation: { itinerary: { Itinerary: [{ codItinerary: cod + "_1", direction: 1, stops: { StopInformation: [{ codStop: "8_06756" }] } }] } } } });
+    }
+    if (url.includes("GetLineLocation")) return Response.json(url.includes("8__153___") ? loc : {});
+    throw new Error("URL inesperada " + url);
+  });
+  const res = await worker.default.fetch(new Request("https://w/crtm/stop/06756", { headers: { Origin: "https://bendi.dev" } }), {}, {});
+  assert.equal(res.status, 200);
+  assert.equal(res.headers.get("Access-Control-Allow-Origin"), "https://bendi.dev");
+  const j = await res.json();
+  assert.deepEqual(j.stop, { name: "MARQUÉS VALDAVIA", pos: [40.54, -3.63] });
+  assert.equal(j.stopTimes.times.Time.length, 6);
+  assert.deepEqual(j.vehicles.map(v => v.key), ["v-1628MVP"]);
+  // Posición solo de autobuses (8 y 9): las 6 líneas de la parada lo son, una consulta por línea
+  assert.equal(calls.filter(u => u.includes("GetLineLocation")).length, 6);
+  // Códigos no válidos no llegan al Consorcio
+  const bad = await worker.default.fetch(new Request("https://w/crtm/stop/abc"), {}, {});
+  assert.equal(bad.status, 404);
+});

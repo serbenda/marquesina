@@ -14,7 +14,7 @@ Funciona en **Madrid y toda la Comunidad**: autobuses de **EMT Madrid**, interur
 
 - **Recibir un aviso para salir.** En cada parada eliges días y franja horaria (por ejemplo, de lunes a viernes de 8:00 a 8:45) y te llega una notificación al móvil, *"¡Sal ya! 153 · Cole"*, aunque la app esté cerrada.
 - **Saber cuándo salir de casa.** Indica cuántos minutos tardas andando a cada parada y marquesina te dice *"Sal en 4 min"*, *"¡Sal ya!"* o *"No llegas"*, y a qué bus te da tiempo. Arriba del todo aparece siempre lo más urgente.
-- **Ver tus paradas en vivo.** Una fila por línea con el próximo bus y los siguientes (*"luego 14′ · 26′"*). Se actualiza sola cada 30 s, 1 min o 2 min, y al volver a abrir la app.
+- **Ver tus paradas en vivo.** Una fila por línea con el próximo bus y los siguientes (*"luego 14′ · 26′"*). Se actualiza sola cada 15 s (o 10 s, 30 s, 1 min), con los buses deslizándose por el mapa hasta su nueva posición. Se pausa cuando la app no está a la vista y se pone al día nada más volver.
 - **Ponerles nombre.** "Casa", "Cole", "Trabajo"… y marcar tus favoritas para que salgan siempre arriba.
 - **Seguir los buses en el mapa.** Los de EMT y los del Consorcio (interurbanos, Alcobendas, Sanse…) aparecen con su posición GPS real en un recuadro del color de su línea y dejan un rastro para ver por dónde vienen. Si varios coinciden, se abren en abanico para que se lean todos. Si tocas una llegada en la lista, el mapa se centra en ese bus.
 - **Ver el Metro.** Próximos trenes de cada estación, con los colores oficiales de cada línea.

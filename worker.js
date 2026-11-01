@@ -3,6 +3,9 @@
 //  /crtm/<Get*.php>?...   -> API del Consorcio de Transportes (www.crtm.es/widgets/api): tiempos y
 //                            posición de interurbanos, urbanos de otros municipios y Metro.
 //                            El Consorcio no permite llamadas desde otras webs (CORS).
+//  /crtm/stop/<parada>    -> Todo lo de una parada del Consorcio en una sola respuesta: datos de la
+//                            parada, tiempos (GetStopsTimes) y posición GPS de los buses de cada línea
+//                            (GetLinesInformation + GetLineLocation). Ahorra peticiones a la web.
 //  /emt/arrives/<parada>  -> Llegadas de EMT Madrid (con posición GPS de cada bus). El worker inicia
 //                            sesión en Mobility Labs, así nadie tiene que registrarse.
 //  /push/key              -> Clave pública VAPID para suscribirse a las notificaciones.
@@ -19,13 +22,13 @@
 // Despliegue: automático desde GitHub (.github/workflows/worker.yml, con wrangler.toml).
 
 import { DurableObject } from "cloudflare:workers";
-import { parseEmt, parseCrtmTimes, bestLeave, alertActive, leaveMessage, crtmCode } from "./logic.js";
+import { parseEmt, parseCrtmTimes, parseCrtmVehicles, bestLeave, alertActive, leaveMessage, crtmCode, asArray } from "./logic.js";
 import { generateVapidKeys, sendPush, isPushEndpoint } from "./push.js";
 
 const EMT = "https://openapi.emtmadrid.es";
 const CRTM = "https://www.crtm.es/widgets/api";
 const ALLOWED_ORIGINS = ["https://bendi.dev", "https://serbenda.github.io"];
-const CACHE_SECONDS = 20;
+const CACHE_SECONDS = 10;      // las fuentes refrescan cada ~15-30 s: más no aporta datos nuevos
 const MAX_ALERTS = 10;          // avisos por suscripción
 const MAX_SUBSCRIPTIONS = 1000; // suscripciones en total
 
@@ -108,6 +111,55 @@ async function emtArrivalsCached(stop, env, ctx) {
     ctx && ctx.waitUntil ? ctx.waitUntil(put) : await put;
   }
   return data;
+}
+
+// ---------- Parada del Consorcio completa ----------
+const crtmGet = (path, ttl = CACHE_SECONDS) =>
+  fetch(`${CRTM}/${path}`, { cf: { cacheTtl: ttl } }).then(r => r.json());
+
+// Itinerarios de cada línea: no cambian, se guardan en memoria y 1 día en la caché de Cloudflare
+const lineCache = new Map();
+function crtmItineraries(codLine) {
+  if (!lineCache.has(codLine)) {
+    lineCache.set(codLine, crtmGet(`GetLinesInformation.php?activeItinerary=1&codLine=${encodeURIComponent(codLine)}`, 86400)
+      .then(j => {
+        const info = asArray(j.lines && j.lines.LineInformation)[0] || {};
+        return asArray(info.itinerary && info.itinerary.Itinerary).map(it => ({
+          cod: it.codItinerary, dir: it.direction,
+          stops: new Set(asArray(it.stops && it.stops.StopInformation).map(st => st.codStop)),
+        }));
+      })
+      .catch(() => { lineCache.delete(codLine); return []; }));
+  }
+  return lineCache.get(codLine);
+}
+
+async function crtmStop(code) {
+  const [info, times] = await Promise.all([
+    crtmGet(`GetStops.php?codStop=${code}`, 86400).catch(() => ({})),
+    crtmGet(`GetStopsTimes.php?codStop=${code}&type=1&orderBy=2&stopTimesByIti=3`),
+  ]);
+  const s = asArray(info.stops && info.stops.Stop)[0] || {};
+  // Posición de los buses de cada línea y sentido (solo autobuses: 8 interurbanos, 9 urbanos)
+  const lines = new Map();
+  for (const t of asArray(times.stopTimes && times.stopTimes.times && times.stopTimes.times.Time))
+    if (t.line && ["8", "9"].includes(String(t.line.codMode)) && !lines.has(`${t.line.codLine}|${t.direction}`))
+      lines.set(`${t.line.codLine}|${t.direction}`, t);
+  const vehicles = (await Promise.all([...lines.values()].map(async t => {
+    try {
+      const its = await crtmItineraries(t.line.codLine);
+      const it = its.find(i => i.dir == t.direction && i.stops.has(code)) || its.find(i => i.stops.has(code));
+      if (!it) return [];
+      const j = await crtmGet(`GetLineLocation.php?mode=${t.line.codMode}&codItinerary=${encodeURIComponent(it.cod)}&codLine=${encodeURIComponent(t.line.codLine)}&codStop=${code}&direction=${it.dir}`);
+      return parseCrtmVehicles(j, { codLine: t.line.codLine, line: t.line.shortDescription, dest: (t.destination || "").replace(/^.*?-\s*/, "") || t.destination });
+    } catch { return []; }   // si falla la posición de una línea, siguen valiendo los tiempos
+  }))).flat();
+  return {
+    stop: { name: s.name || (times.stopTimes && times.stopTimes.stop && times.stopTimes.stop.name) || "",
+            pos: s.coordinates ? [s.coordinates.latitude, s.coordinates.longitude] : null },
+    stopTimes: times.stopTimes || null,
+    vehicles,
+  };
 }
 
 // ---------- Avisos: validación de lo que manda la web ----------
@@ -228,6 +280,13 @@ export default {
     const cors = corsHeaders(req);
     if (req.method === "OPTIONS") return new Response(null, { headers: cors });
     const url = new URL(req.url);
+
+    // ---- Parada del Consorcio completa (una sola petición) ----
+    const cs = url.pathname.match(/^\/crtm\/stop\/(\d{1,2}_\d{1,6}|\d{1,6})\/?$/);
+    if (cs) {
+      try { return json(await crtmStop(crtmCode(cs[1])), 200, { ...cors, "Cache-Control": `max-age=${CACHE_SECONDS}` }); }
+      catch (e) { return json({ error: "No se pudo consultar el Consorcio" }, 502, cors); }
+    }
 
     // ---- Consorcio ----
     if (url.pathname.startsWith("/crtm/")) {

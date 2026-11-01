@@ -99,6 +99,9 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
 .err{color:var(--now)}
 .note{margin:0;padding:8px max(16px,env(safe-area-inset-right,0px)) 8px max(16px,env(safe-area-inset-left,0px));border-bottom:1px solid var(--line);font-size:13px}
 
+/* Los buses se deslizan hasta su nueva posición; durante el zoom no, para que no se queden atrás */
+.leaflet-marker-icon.bus-marker{transition:transform 1.2s linear}
+.leaflet-zoom-anim .leaflet-marker-icon.bus-marker{transition:none}
 .bus-icon{display:grid;place-items:center;font:700 14px/1 var(--display);color:#fff;border:2px solid #fff;border-radius:7px;box-shadow:0 1px 4px rgba(0,0,0,.35);transition:transform .3s}
 .stop-icon{width:18px;height:18px;border-radius:50%;background:var(--stop);border:4px solid var(--panel);box-shadow:0 0 0 2px var(--stop)}
 
@@ -117,7 +120,7 @@ input,select{font:15px var(--body);color:var(--fg);background:var(--bg);border:1
   #map{flex:1 1 auto}
   .panel{flex:0 0 380px;border-top:0;border-left:1px solid var(--line);order:2}
 }
-@media (prefers-reduced-motion:reduce){.bus-icon{transition:none}}
+@media (prefers-reduced-motion:reduce){.bus-icon,.leaflet-marker-icon.bus-marker{transition:none}}
 </style>
 </head>
 <body>
@@ -153,7 +156,7 @@ input,select{font:15px var(--body);color:var(--fg);background:var(--bg);border:1
     <label>Proxy (déjalo vacío para usar el de marquesina)
       <input id="fProxy" placeholder="https://marquesina.serbenda.workers.dev"></label>
     <label>Actualizar cada
-      <select id="fEvery"><option value="60">1 minuto</option><option value="120">2 minutos</option><option value="30">30 segundos</option></select></label>
+      <select id="fEvery"><option value="10">10 segundos</option><option value="15">15 segundos</option><option value="30">30 segundos</option><option value="60">1 minuto</option></select></label>
     <div class="actions">
       <button type="button" id="btnDemo">Usar demo</button>
       <button type="submit" class="primary">Guardar</button>
@@ -249,7 +252,7 @@ const PROXY = "https://marquesina.serbenda.workers.dev";
 // Paradas de ejemplo en Alcobendas (Marqués de la Valdavia) para que la web arranque en vivo
 // meta: datos propios de cada parada -> {"emt:69": {alias:"Casa", walk:5, fav:true}, "crtm:06756": {...}}
 // alerts: avisos programados por parada -> {"crtm:06756": {on, days:[1..7], from:"07:30", to:"09:00", line:"", lead:3}}
-const DEF = {stops:"", crtm:"06756, 06758", proxy:PROXY, every:60, meta:{}, alerts:{}};
+const DEF = {stops:"", crtm:"06756, 06758", proxy:PROXY, every:15, meta:{}, alerts:{}};
 const store = {
   get(){
     let v; try{ v = {...DEF, ...JSON.parse(localStorage.getItem("marquesina")||"{}")}; }catch{ v = {...DEF}; }
@@ -259,6 +262,7 @@ const store = {
     if (!v.crtm.trim() && !v.stops.trim() && !v.demo) v.crtm = DEF.crtm;
     if (!v.meta || typeof v.meta !== "object") v.meta = {};
     if (!v.alerts || typeof v.alerts !== "object") v.alerts = {};
+    if (![10,15,30,60].includes(+v.every)) v.every = DEF.every;   // intervalos antiguos (2 min) pasan al nuevo por defecto
     return v;
   },
   set(v){ try{ localStorage.setItem("marquesina", JSON.stringify(v)); }catch{} }
@@ -285,7 +289,7 @@ let fitted = false;
 
 // Recuadro del bus; dx/dy lo desplazan para que no se pisen los que están en el mismo sitio
 function busIcon(line, mode, dx = 0, dy = 0){
-  return L.divIcon({className:"", iconSize:[38,26], iconAnchor:[19,13],
+  return L.divIcon({className:"bus-marker", iconSize:[38,26], iconAnchor:[19,13],
     html:`<div class="bus-icon" style="width:38px;height:26px;background:${colorFor(line, mode)};transform:translate(${dx}px,${dy}px)">${esc(line)}</div>`});
 }
 const stopIcon = L.divIcon({className:"", iconSize:[18,18], iconAnchor:[9,9], html:'<div class="stop-icon"></div>'});
@@ -301,59 +305,13 @@ async function arrivals(stop){
 // Da tiempos de llegada por parada (GetStopsTimes) y, aparte, la posición GPS de los buses (GetLineLocation).
 // No admite llamadas directas desde otras webs (CORS), así que pasa por el proxy (worker.js).
 const crtmUrl = (path) => `${cfg.proxy.replace(/\/$/,"")}/crtm/${path}`;
-const crtmStopCache = new Map();
-
-async function crtmStopInfo(code){
-  if (crtmStopCache.has(code)) return crtmStopCache.get(code);
-  const j = await (await fetch(crtmUrl(`GetStops.php?codStop=${code}`))).json();
-  const s = asArray(j.stops && j.stops.Stop)[0] || {};
-  const info = {name: s.name || `Parada ${code}`, pos: s.coordinates ? [s.coordinates.latitude, s.coordinates.longitude] : null};
-  crtmStopCache.set(code, info);
-  return info;
-}
-// Recorridos de cada línea (para saber en qué itinerario y sentido está la parada). No cambian: se guardan.
-const crtmLineCache = new Map();
-async function crtmItineraries(codLine){
-  if (crtmLineCache.has(codLine)) return crtmLineCache.get(codLine);
-  const p = fetch(crtmUrl(`GetLinesInformation.php?activeItinerary=1&codLine=${encodeURIComponent(codLine)}`))
-    .then(r=>r.json())
-    .then(j=>{
-      const info = asArray(j.lines && j.lines.LineInformation)[0] || {};
-      return asArray(info.itinerary && info.itinerary.Itinerary).map(it=>({
-        cod: it.codItinerary, dir: it.direction,
-        stops: new Set(asArray(it.stops && it.stops.StopInformation).map(st=>st.codStop))
-      }));
-    })
-    .catch(()=>{ crtmLineCache.delete(codLine); return []; });
-  crtmLineCache.set(codLine, p);
-  return p;
-}
-
-// Posición GPS real de los autobuses de cada línea que pasa por la parada (GetLineLocation)
-async function crtmVehicles(code, times){
-  const lines = new Map();
-  for (const t of times) if (t.line && ["8","9"].includes(String(t.line.codMode)) && !lines.has(`${t.line.codLine}|${t.direction}`)) lines.set(`${t.line.codLine}|${t.direction}`, t);
-  const found = await Promise.all([...lines.values()].map(async t=>{
-    try{
-      const its = await crtmItineraries(t.line.codLine);
-      const it = its.find(i=>i.dir == t.direction && i.stops.has(code)) || its.find(i=>i.stops.has(code));
-      if (!it) return [];
-      const j = await (await fetch(crtmUrl(`GetLineLocation.php?mode=${t.line.codMode||8}&codItinerary=${encodeURIComponent(it.cod)}&codLine=${encodeURIComponent(t.line.codLine)}&codStop=${code}&direction=${it.dir}`))).json();
-      return parseCrtmVehicles(j, {codLine:t.line.codLine, line:t.line.shortDescription, dest:(t.destination||"").replace(/^.*?-\s*/,"") || t.destination});
-    }catch{ return []; }   // si falla la posición, siguen valiendo los tiempos
-  }));
-  return found.flat();
-}
-
+// Una sola petición por parada: el worker junta datos de la parada, tiempos y posición de los buses
 async function crtmArrivals(raw){
   const code = crtmCode(raw.trim());
-  const [info, j] = await Promise.all([
-    crtmStopInfo(code),
-    fetch(crtmUrl(`GetStopsTimes.php?codStop=${code}&type=1&orderBy=2&stopTimesByIti=3`)).then(r=>r.json())
-  ]);
-  const {times, buses} = parseCrtmTimes(j, code);
-  const vehicles = await crtmVehicles(code, times);
-  return {id: code.replace(/^8_/,""), name: info.name, pos: info.pos, crtm: true, vehicles, buses};
+  const j = await (await fetch(`${cfg.proxy.replace(/\/$/,"")}/crtm/stop/${code}`)).json();
+  const {buses} = parseCrtmTimes(j, code);
+  const name = (j.stop && j.stop.name) || `Parada ${code.replace(/^\d+_/,"")}`;
+  return {id: code.replace(/^8_/,""), name, pos: j.stop && j.stop.pos, crtm: true, vehicles: j.vehicles || [], buses};
 }
 async function crtmNearest(lat, lng, radius = 350){
   const j = await (await fetch(crtmUrl(`GetNearestStopsByLocation.php?latitude=${lat.toFixed(5)}&longitude=${lng.toFixed(5)}&mode=&method=1&precision=${Math.round(radius)}`))).json();
@@ -552,7 +510,7 @@ function tick(){
   const left = Math.max(0, (nextAt-Date.now())/1000);
   document.getElementById("ringTxt").textContent = Math.ceil(left);
   document.getElementById("ringFg").setAttribute("stroke-dashoffset", 75.4*(1-left/cfg.every));
-  if (left <= 0) refresh();
+  if (left <= 0 && !document.hidden) refresh();   // con la app en segundo plano no se consulta nada
   if (fetchedAt) renderList(); // cuenta atrás de minutos entre consultas
   // en demo, mover los buses suavemente cada segundo
   if (!isLive() && fetchedAt){ last = demoArrivals().map(s=>({...s, at:Date.now()})); fetchedAt = Date.now(); renderMap(); }
@@ -802,7 +760,7 @@ document.getElementById("btnTestPush").onclick = async () => {
 
 // Al volver a la pestaña o abrir la app instalada, actualizar enseguida
 document.addEventListener("visibilitychange", ()=>{
-  if (document.visibilityState === "visible" && Date.now() - fetchedAt > 15000) refresh();
+  if (document.visibilityState === "visible" && Date.now() - fetchedAt > 5000) refresh();
 });
 
 // ---------- App instalable (PWA) ----------
