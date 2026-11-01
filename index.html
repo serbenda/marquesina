@@ -128,7 +128,7 @@ input,select{font:15px var(--body);color:var(--fg);background:var(--bg);border:1
 <section class="panel">
   <div class="bar">
     <h1>Marquesina</h1>
-    <span class="mode" id="mode">Demo</span>
+    <span class="mode" id="mode">Cargando</span>
     <span class="spacer"></span>
     <div class="ring" title="Próxima actualización">
       <svg width="30" height="30" viewBox="0 0 30 30"><circle cx="15" cy="15" r="12" fill="none" stroke="var(--line)" stroke-width="3"/><circle id="ringFg" cx="15" cy="15" r="12" fill="none" stroke="var(--accent)" stroke-width="3" stroke-dasharray="75.4" stroke-dashoffset="0"/></svg>
@@ -153,12 +153,9 @@ input,select{font:15px var(--body);color:var(--fg);background:var(--bg);border:1
       <input id="fStops" inputmode="numeric" placeholder="72, 3054"></label>
     <label>Paradas Consorcio: Alcobendas, Sanse, interurbanos (códigos de 5 cifras)
       <input id="fCrtm" inputmode="numeric" placeholder="06756, 06758"></label>
-    <label>Proxy (déjalo vacío para usar el de marquesina)
-      <input id="fProxy" placeholder="https://marquesina.serbenda.workers.dev"></label>
     <label>Actualizar cada
       <select id="fEvery"><option value="10">10 segundos</option><option value="15">15 segundos</option><option value="30">30 segundos</option><option value="60">1 minuto</option></select></label>
     <div class="actions">
-      <button type="button" id="btnDemo">Usar demo</button>
       <button type="submit" class="primary">Guardar</button>
     </div>
   </form>
@@ -187,7 +184,7 @@ input,select{font:15px var(--body);color:var(--fg);background:var(--bg);border:1
       <div class="introbtns">
         <button type="button" class="primary" id="introNear">Usar mi ubicación</button>
         <button type="button" id="introZone">Elegir un municipio</button>
-        <button type="button" id="introSkip">Ver un ejemplo</button>
+        <button type="button" id="introSkip">Ver paradas de ejemplo</button>
       </div>
     </div>
     <div id="intro2" hidden>
@@ -247,30 +244,33 @@ import { asArray, esc, crtmCode, fmtEta, status, fmtDist, fmtAge, parseEmt, pars
 import { unb64url } from "./push.js";
 
 // ---------- Configuración ----------
-// Proxy propio en Cloudflare: viene puesto para que nadie tenga que configurarlo
+// Worker de marquesina en Cloudflare (proxy de EMT y del Consorcio, y avisos). Fijo: no se configura.
 const PROXY = "https://marquesina.serbenda.workers.dev";
 // Paradas de ejemplo en Alcobendas (Marqués de la Valdavia) para que la web arranque en vivo
 // meta: datos propios de cada parada -> {"emt:69": {alias:"Casa", walk:5, fav:true}, "crtm:06756": {...}}
 // alerts: avisos programados por parada -> {"crtm:06756": {on, days:[1..7], from:"07:30", to:"09:00", line:"", lead:3}}
-const DEF = {stops:"", crtm:"06756, 06758", proxy:PROXY, every:15, meta:{}, alerts:{}};
+// La primera vez (sin nada guardado) arranca con dos paradas de ejemplo en Alcobendas
+const DEF = {stops:"", crtm:"06756, 06758", every:15, meta:{}, alerts:{}};
 const store = {
   get(){
-    let v; try{ v = {...DEF, ...JSON.parse(localStorage.getItem("marquesina")||"{}")}; }catch{ v = {...DEF}; }
-    if (!v.proxy) v.proxy = PROXY;   // ajustes antiguos guardados sin proxy
-    delete v.email; delete v.pass; delete v.base;   // versiones anteriores guardaban una cuenta propia de EMT
-    // Si no hay ninguna parada y no se eligió la demo a propósito, arrancar con las de ejemplo
-    if (!v.crtm.trim() && !v.stops.trim() && !v.demo) v.crtm = DEF.crtm;
+    let saved = null;
+    try{ saved = JSON.parse(localStorage.getItem("marquesina") || "null"); }catch{}
+    // Con ajustes guardados se respetan tal cual (también sin paradas); sin nada guardado, los de ejemplo
+    const v = saved ? {...DEF, stops:"", crtm:"", ...saved} : {...DEF};
+    // Campos de versiones anteriores que ya no se usan: cuenta propia de EMT, proxy configurable y modo demo
+    delete v.email; delete v.pass; delete v.base; delete v.proxy; delete v.demo;
+    v.stops = String(v.stops || ""); v.crtm = String(v.crtm || "");
     if (!v.meta || typeof v.meta !== "object") v.meta = {};
     if (!v.alerts || typeof v.alerts !== "object") v.alerts = {};
-    if (![10,15,30,60].includes(+v.every)) v.every = DEF.every;   // intervalos antiguos (2 min) pasan al nuevo por defecto
+    if (![10,15,30,60].includes(+v.every)) v.every = DEF.every;
     return v;
   },
   set(v){ try{ localStorage.setItem("marquesina", JSON.stringify(v)); }catch{} }
 };
 let cfg = store.get();
 const hasEmt  = () => !!cfg.stops.trim();
-const hasCrtm = () => !!(cfg.crtm.trim() && cfg.proxy);
-const isLive  = () => !cfg.demo && (hasEmt() || hasCrtm());
+const hasCrtm = () => !!cfg.crtm.trim();
+const isLive  = () => hasEmt() || hasCrtm();
 const stopKey = s => `${s.crtm ? "crtm" : "emt"}:${s.id}`;
 const metaOf  = s => cfg.meta[stopKey(s)] || {};
 
@@ -297,18 +297,18 @@ const stopIcon = L.divIcon({className:"", iconSize:[18,18], iconAnchor:[9,9], ht
 // ---------- API EMT ----------
 // El worker de marquesina inicia sesión en EMT con las claves de la aplicación
 async function arrivals(stop){
-  const j = await (await fetch(`${cfg.proxy.replace(/\/$/,"")}/emt/arrives/${stop}`)).json();
+  const j = await (await fetch(`${PROXY}/emt/arrives/${stop}`)).json();
   return parseEmt(j, stop);
 }
 
 // ---------- API del Consorcio (CRTM): interurbanos y urbanos de Alcobendas, Sanse, etc. ----------
 // Da tiempos de llegada por parada (GetStopsTimes) y, aparte, la posición GPS de los buses (GetLineLocation).
 // No admite llamadas directas desde otras webs (CORS), así que pasa por el proxy (worker.js).
-const crtmUrl = (path) => `${cfg.proxy.replace(/\/$/,"")}/crtm/${path}`;
+const crtmUrl = (path) => `${PROXY}/crtm/${path}`;
 // Una sola petición por parada: el worker junta datos de la parada, tiempos y posición de los buses
 async function crtmArrivals(raw){
   const code = crtmCode(raw.trim());
-  const j = await (await fetch(`${cfg.proxy.replace(/\/$/,"")}/crtm/stop/${code}`)).json();
+  const j = await (await fetch(`${PROXY}/crtm/stop/${code}`)).json();
   const {buses} = parseCrtmTimes(j, code);
   const name = (j.stop && j.stop.name) || `Parada ${code.replace(/^\d+_/,"")}`;
   return {id: code.replace(/^8_/,""), name, pos: j.stop && j.stop.pos, crtm: true, vehicles: j.vehicles || [], buses};
@@ -316,35 +316,13 @@ async function crtmArrivals(raw){
 // Paradas cercanas: Consorcio (autobuses, Metro, Cercanías y parte de EMT) + EMT (todas sus paradas,
 // también las que el Consorcio no tiene, como El Pardo). Si una fuente falla, vale la otra.
 async function crtmNearest(lat, lng, radius = 350){
-  const base = cfg.proxy.replace(/\/$/,"");
+  const base = PROXY;
   const [crtm, emt] = await Promise.allSettled([
     fetch(crtmUrl(`GetNearestStopsByLocation.php?latitude=${lat.toFixed(5)}&longitude=${lng.toFixed(5)}&mode=&method=1&precision=${Math.round(radius)}`)).then(r=>r.json()).then(parseNearest),
     fetch(`${base}/emt/near/${lat.toFixed(5)}/${lng.toFixed(5)}/${Math.round(radius)}`).then(r=>r.json()).then(parseEmtNear),
   ]);
   if (crtm.status === "rejected" && emt.status === "rejected") throw new Error("Sin datos de paradas");
   return mergeStops(emt.value || [], crtm.value || []);
-}
-
-// ---------- Demo: buses simulados que se acercan a la parada ----------
-const DEMO_STOP = {id:"72", name:"Demo · Cibeles", pos:[40.4193,-3.6932], demo:true};
-const demoBuses = [
-  {key:"27-1", line:"27", dest:"Plaza Castilla", from:[40.4085,-3.6925], eta:420},
-  {key:"14-2", line:"14", dest:"Pío XII",        from:[40.4120,-3.7030], eta:260},
-  {key:"146-3",line:"146",dest:"Callao",         from:[40.4265,-3.6880], eta:540},
-  {key:"5-4",  line:"5",  dest:"Chamartín",      from:[40.4180,-3.7060], eta:120},
-  {key:"150-5",line:"150",dest:"Virgen del Cortijo",from:[40.4300,-3.6950], eta:780},
-];
-const demoStart = Date.now();
-function demoArrivals(){
-  const t = (Date.now()-demoStart)/1000;
-  const buses = demoBuses.map(b=>{
-    let eta = b.eta - t; if (eta < 0) eta = ((eta % 900) + 900) % 900; // vuelve a empezar
-    const f = Math.min(1, eta / b.eta);
-    const pos = [DEMO_STOP.pos[0] + (b.from[0]-DEMO_STOP.pos[0])*f, DEMO_STOP.pos[1] + (b.from[1]-DEMO_STOP.pos[1])*f];
-    const dist = Math.round(map.distance(pos, DEMO_STOP.pos));
-    return {key:b.key, line:b.line, dest:b.dest, eta:Math.round(eta), dist, pos};
-  });
-  return [{...DEMO_STOP, buses}];
 }
 
 // ---------- Render ----------
@@ -377,7 +355,7 @@ function heroHtml(stops){
 
 function renderList(){
   const el = document.getElementById("list");
-  if (!last.length){ el.innerHTML = '<p class="empty">Añade una parada con Cerca de mí, Buscar paradas o Ajustes.</p>'; return; }
+  if (!last.length){ el.innerHTML = '<p class="empty">Aún no tienes paradas. Añade una con <b>Cerca de mí</b>, <b>Zona</b> o <b>Buscar paradas</b>.</p>'; return; }
   // favoritas primero, el resto en el orden en que se añadieron
   const ordered = last.map((s,i)=>({s,i})).sort((a,b)=>((metaOf(b.s).fav?1:0)-(metaOf(a.s).fav?1:0)) || a.i-b.i).map(x=>x.s);
   el.innerHTML = (isLive() ? heroHtml(ordered) : "") + ordered.map(s=>{
@@ -395,10 +373,10 @@ function renderList(){
     }).join("") || '<p class="empty">No hay autobuses previstos ahora mismo.</p>';
     const sub = [m.alias ? esc(s.name) : "", `${kindOf(s)} ${esc(String(s.id).replace(/^\d+_/,""))}`, m.walk ? `${m.walk} min andando` : ""].filter(Boolean).join(" · ")
       + (s.stale ? `<span class="stale">Sin conexión · datos ${fmtAge(Date.now() - s.at)}</span>` : "");
-    const editBtn = s.demo ? "" : `<button class="edit" data-edit="${esc(stopKey(s))}" data-name="${esc(s.name)}">Editar</button>`;
+    const editBtn = `<button class="edit" data-edit="${esc(stopKey(s))}" data-name="${esc(s.name)}">Editar</button>`;
     return `<div class="stophead">${m.fav ? '<span class="star" aria-label="Favorita">★</span>' : ""}<span class="alias">${esc(m.alias || s.name)}</span>${cfg.alerts[stopKey(s)]?.on ? '<span class="bell" title="Aviso activado" aria-label="Aviso activado">🔔</span>' : ""}${editBtn}</div>
       <p class="stopsub">${sub}</p>${rows}`;
-  }).join("") + (isLive() ? "" : '<p class="empty">Esto es una demo. Pulsa <b>Cerca de mí</b> o <b>Buscar paradas</b> para ver los autobuses reales de tu parada.</p>');
+  }).join("");
 }
 
 function renderMap(){
@@ -487,9 +465,9 @@ async function refresh(){
 }
 async function doRefresh(){
   const stops = cfg.stops.split(/[,\s]+/).filter(Boolean);
-  document.getElementById("mode").textContent = isLive() ? "En vivo" : "Demo";
+  document.getElementById("mode").textContent = isLive() ? "En vivo" : "Sin paradas";
   document.getElementById("mode").classList.toggle("live", isLive());
-  if (!isLive()){ last = demoArrivals().map(s=>({...s, at:Date.now()})); }
+  if (!isLive()){ last = []; }
   else {
     const jobs = [];
     if (hasEmt()) jobs.push(...stops.map(s=>arrivals(s).catch(err=>({id:String(s), error:
@@ -497,7 +475,7 @@ async function doRefresh(){
     if (hasCrtm()) jobs.push(...cfg.crtm.split(/[,\s]+/).filter(Boolean).map(s=>crtmArrivals(s).catch(err=>({id:crtmCode(s).replace(/^8_/,""), crtm:true, error:
       err instanceof TypeError ? `No se pudo conectar con el Consorcio (parada ${s}).` : err.message}))));
     // Si una parada falla, se mantienen sus últimos datos (hasta 15 min) marcados como antiguos
-    const prev = new Map(last.filter(s=>!s.error && !s.demo).map(s=>[stopKey(s), s]));
+    const prev = new Map(last.filter(s=>!s.error).map(s=>[stopKey(s), s]));
     const now = Date.now();
     last = (await Promise.all(jobs)).map(r=>{
       if (!r.error) return {...r, at: now};
@@ -506,7 +484,7 @@ async function doRefresh(){
     });
   }
   const allStale = isLive() && last.length && last.every(s=>s.stale || s.error);
-  document.getElementById("mode").textContent = !isLive() ? "Demo" : allStale ? "Sin conexión" : "En vivo";
+  document.getElementById("mode").textContent = !isLive() ? "Sin paradas" : allStale ? "Sin conexión" : "En vivo";
   document.getElementById("mode").classList.toggle("live", isLive() && !allStale);
   document.getElementById("mode").classList.toggle("off", !!allStale);
   fetchedAt = Date.now();
@@ -519,8 +497,6 @@ function tick(){
   document.getElementById("ringFg").setAttribute("stroke-dashoffset", 75.4*(1-left/cfg.every));
   if (left <= 0 && !document.hidden) refresh();   // con la app en segundo plano no se consulta nada
   if (fetchedAt) renderList(); // cuenta atrás de minutos entre consultas
-  // en demo, mover los buses suavemente cada segundo
-  if (!isLive() && fetchedAt){ last = demoArrivals().map(s=>({...s, at:Date.now()})); fetchedAt = Date.now(); renderMap(); }
 }
 setInterval(tick, 1000);
 document.getElementById("btnRefresh").onclick = refresh;
@@ -529,18 +505,14 @@ document.getElementById("btnRefresh").onclick = refresh;
 const dlg = document.getElementById("cfg");
 document.getElementById("btnCfg").onclick = ()=>{
   fStops.value = cfg.stops;
-  fCrtm.value = cfg.crtm; fProxy.value = cfg.proxy === PROXY ? "" : cfg.proxy;
+  fCrtm.value = cfg.crtm;
   fEvery.value = String(cfg.every); dlg.showModal();
 };
 document.getElementById("cfgForm").addEventListener("submit", ()=>{
-  cfg = {stops:fStops.value.trim(),
-         demo:false, crtm:fCrtm.value.trim(), proxy:(fProxy.value.trim() || PROXY).replace(/\/$/,""),
-         every:+fEvery.value};
+  // Se conservan los nombres, minutos andando y avisos de las paradas
+  cfg = {...cfg, stops:fStops.value.trim(), crtm:fCrtm.value.trim(), every:+fEvery.value};
   store.set(cfg); fitted = false; refresh();
 });
-document.getElementById("btnDemo").onclick = ()=>{
-  cfg = {...cfg, demo:true}; store.set(cfg); fitted = false; dlg.close(); refresh();
-};
 
 // ---------- Editar una parada: nombre, minutos andando, favorita, quitar ----------
 const stopDlg = document.getElementById("stopDlg");
@@ -659,7 +631,7 @@ document.addEventListener("click", e=>{
   const field = e.target.dataset.net === "emt" ? "stops" : "crtm";
   const list = cfg[field].split(/[,\s]+/).filter(Boolean);
   if (!list.includes(code)) list.push(code);
-  cfg = {...cfg, demo:false, [field]:list.join(", ")}; store.set(cfg);
+  cfg = {...cfg, [field]:list.join(", ")}; store.set(cfg);
   e.target.textContent = "Añadida"; e.target.disabled = true;
   refresh();
 });
@@ -682,7 +654,7 @@ function nearMe(onLoaded){
         .sort((a,b)=>map.distance([lat,lng],a.pos)-map.distance([lat,lng],b.pos)).slice(0,3);
       if (!found.length){ showNote("No hay paradas cerca de ti."); return; }
       const pick = net => found.filter(s=>s.net===net).map(s=>s.code).join(", ");
-      cfg = {...cfg, demo:false, stops:pick("emt"), crtm:pick("crtm")}; store.set(cfg);
+      cfg = {...cfg, stops:pick("emt"), crtm:pick("crtm")}; store.set(cfg);
       fitted = false; showNote(`Cargadas ${found.length} paradas cerca de ti.`); await refresh();
       if (onLoaded) onLoaded(found[0]);
     }catch{ showNote("No se pudieron consultar las paradas. Inténtalo de nuevo en un momento."); }
@@ -720,7 +692,7 @@ const firstVisit = (()=>{ try{ return !localStorage.getItem("marquesina") && !lo
 
 // ---------- Avisos programados (Web Push) ----------
 // El navegador se suscribe con la clave del worker; el worker revisa los avisos cada minuto y envía la notificación.
-const pushUrl = path => `${cfg.proxy.replace(/\/$/,"")}/push/${path}`;
+const pushUrl = path => `${PROXY}/push/${path}`;
 const pushSupported = () => "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
 
 async function getSubscription(create){
