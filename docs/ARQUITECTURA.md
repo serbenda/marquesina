@@ -25,7 +25,9 @@ flowchart LR
 | Pieza | Archivo | Dónde se ejecuta | Cómo se publica |
 |---|---|---|---|
 | Web | `index.html` | Navegador del usuario | Automático: push a `main` → workflow `pages.yml` |
-| Proxy | `worker.js` | Cloudflare Workers | **Manual:** se copia el código en el panel de Cloudflare |
+| App instalable | `manifest.webmanifest`, `sw.js`, `assets/` | Navegador del usuario | Igual que la web |
+| Proxy | `worker.js`, `wrangler.toml` | Cloudflare Workers | Automático: cambios en `main` → workflow `worker.yml` |
+| Vigilancia | `.github/workflows/healthcheck.yml` | GitHub Actions, cada hora | Forma parte del repo |
 | Despliegue | `.github/workflows/pages.yml` | GitHub Actions | Forma parte del repo |
 | Sin Jekyll | `.nojekyll` | GitHub Pages | Hace que GitHub sirva los archivos tal cual |
 
@@ -76,6 +78,25 @@ Teselas de OpenStreetMap (`tile.openstreetmap.org`) con atribución. Para un uso
 5. **Colores de línea:** salen de un hash del número de línea sobre una paleta fija (`colorFor`), así cada línea tiene siempre el mismo color.
 6. **Tema:** claro u oscuro según el sistema, con variables CSS en `:root`.
 
+### Lista de llegadas y aviso de salida
+
+- **Agrupación:** `groupByLine()` junta las llegadas de cada parada por línea y destino. Cada fila muestra el primer bus y los dos siguientes ("luego 14′ · 26′").
+- **Cuándo salir:** `leaveInfo()` busca el primer bus al que da tiempo llegar andando (`eta ≥ walk − 30 s`) y calcula `salir en = eta − walk`. El chip de cada fila muestra *Sal en X min*, *¡Sal ya!* (≤ 1 min) o *No llegas*, y añade *al de N′* si el primer bus ya no da tiempo.
+- **Tarjeta principal:** `heroHtml()` elige, entre las paradas con minutos andando, la salida más próxima (las favoritas primero) y la muestra arriba en grande. Se pone roja cuando toca salir ya.
+- **Orden:** favoritas primero; el resto, en el orden en que se añadieron.
+- **Editar parada:** el botón *Editar* abre un diálogo con nombre, minutos andando, favorita y *Quitar parada*.
+- **Volver a la app:** al recuperar el foco (`visibilitychange`), si los datos tienen más de 15 s se refrescan al momento.
+
+### App instalable (PWA)
+
+- `manifest.webmanifest`: nombre, colores, `display: standalone` e iconos (192, 512 y uno *maskable* para Android).
+- `sw.js` (service worker):
+  - **La página:** primero red; si no hay conexión, la última guardada.
+  - **Librerías, fuentes e iconos:** primero caché.
+  - **Datos del worker (`*.workers.dev`) y teselas de OpenStreetMap:** nunca se guardan, siempre en vivo.
+  - `VERSION` identifica la caché. Al cambiarla, el service worker nuevo borra la anterior.
+- **Instalar:** en Android y escritorio aparece el botón *Instalar* (evento `beforeinstallprompt`). En iPhone se muestra una vez el aviso de *Compartir → Añadir a pantalla de inicio*.
+
 ### Ajustes guardados (`localStorage["marquesina"]`)
 
 | Campo | Significado |
@@ -84,6 +105,7 @@ Teselas de OpenStreetMap (`tile.openstreetmap.org`) con atribución. Para un uso
 | `crtm` | Paradas del Consorcio (5 cifras) |
 | `proxy` | URL del worker. Vacío en el formulario = usar `PROXY` |
 | `every` | Segundos entre consultas (30, 60 o 120) |
+| `meta` | Datos propios de cada parada, con clave `emt:<id>` o `crtm:<id>`: `alias` (nombre), `walk` (minutos andando), `fav` (favorita) |
 | `demo` | `true` si el usuario eligió el modo demo |
 
 ## 5. El proxy (`worker.js`)
@@ -106,12 +128,13 @@ Teselas de OpenStreetMap (`tile.openstreetmap.org`) con atribución. Para un uso
 Configuración necesaria en el repo: **Settings → Pages → Source: GitHub Actions**. El dominio `bendi.dev` viene del repo `serbenda.github.io`: `bendi.dev/marquesina` funciona porque este repo es un "project site".
 
 ### Proxy
-Los cambios en `worker.js` **no se despliegan solos**:
-1. Cloudflare → Compute (Workers) → `marquesina` → **Edit code**.
-2. Pegar el contenido de `worker.js` (copiarlo desde la vista *raw* de GitHub) → **Deploy**.
-3. Comprobar en `https://marquesina.serbenda.workers.dev/crtm/GetStops.php?codStop=8_06756`: debe devolver JSON con "MARQUÉS VALDAVIA".
+- **Automático:** el workflow `worker.yml` despliega `worker.js` con `wrangler` (configuración en `wrangler.toml`) cada vez que cambia en `main`. Antes valida la sintaxis y después comprueba que el Consorcio y EMT responden. Usa el secreto del repo `CLOUDFLARE_API_TOKEN`.
+- Los secretos de EMT siguen en Cloudflare: wrangler no los toca al desplegar, y `keep_vars = true` conserva además las variables creadas desde el panel.
+- **Manual (si hiciera falta):** Cloudflare → `marquesina` → **Edit code** → pegar `worker.js` → **Deploy** (ver MANTENIMIENTO §2.3).
 
-Mejora posible: desplegarlo desde GitHub Actions con `wrangler` y un token de Cloudflare guardado como secreto del repo.
+### Vigilancia
+- El workflow `healthcheck.yml` se ejecuta cada hora (minuto 17) y comprueba la web publicada, el Consorcio y EMT a través del worker. Si algo falla, el workflow sale en rojo y GitHub envía un email.
+- GitHub desactiva los workflows programados tras 60 días sin actividad en el repo. Si pasa, hay que reactivarlo desde *Actions*.
 
 ## 7. Mantenimiento: problemas típicos
 
@@ -128,7 +151,7 @@ Mejora posible: desplegarlo desde GitHub Actions con `wrangler` y un token de Cl
 ### Revisiones periódicas
 - **Cada pocos meses:** comprobar que las tres APIs siguen respondiendo igual (ver las URLs de prueba).
 - **Leaflet:** está fijado a 1.9.4. Para actualizarlo, cambiar la versión en las dos etiquetas (`<link>` del CSS y `<script>`) y probar el mapa.
-- **Acciones del workflow:** `checkout@v4`, `configure-pages@v5`, `upload-pages-artifact@v3`, `deploy-pages@v4`. GitHub avisa en *Actions* cuando alguna queda obsoleta.
+- **Acciones de los workflows:** `checkout@v4`, `configure-pages@v5`, `upload-pages-artifact@v3`, `deploy-pages@v4` y `cloudflare/wrangler-action@v3`. GitHub avisa en *Actions* cuando alguna queda obsoleta.
 
 ## 8. Seguridad y privacidad
 
@@ -139,7 +162,7 @@ Mejora posible: desplegarlo desde GitHub Actions con `wrangler` y un token de Cl
 
 ## 9. Ideas pendientes
 
-- Aviso de "sal ya" según el tiempo que se tarda andando a la parada.
-- Convertir la web en PWA (instalable y con icono).
+- Notificaciones ("tu 153 está a 3 minutos").
 - Paradas compartibles por enlace.
-- Despliegue automático del worker desde GitHub Actions.
+- Cercanías y Metro en tiempo real; incidencias de EMT; BiciMAD.
+- Límite de consultas por usuario en el worker.

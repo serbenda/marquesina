@@ -16,6 +16,8 @@ Pasos concretos para montar desde cero, revisar o reparar los servicios externos
 | Aplicación en EMT | `marquesina` (cuenta de serbenda) |
 | Secretos del worker | `EMT_CLIENT_ID` y `EMT_PASSKEY` (aplicación); `EMT_EMAIL` y `EMT_PASSWORD` (cuenta, respaldo) |
 | Icono de la aplicación | [`assets/icono.png`](../assets/icono.png) (512×512) |
+| Secreto de GitHub | `CLOUDFLARE_API_TOKEN` (despliegue del worker) |
+| Workflows | `pages.yml` (web), `worker.yml` (worker), `healthcheck.yml` (chequeo horario) |
 
 ---
 
@@ -81,7 +83,9 @@ Hazlo si se filtran o si sospechas que hay un uso indebido:
 6. La primera vez pide elegir un subdominio de `workers.dev`. Se eligió `serbenda`, así que la URL es `https://marquesina.serbenda.workers.dev`.
 
 ### 2.3 Subir o actualizar el código
-Cada vez que cambie `worker.js` en el repo hay que hacerlo a mano, porque no se despliega solo:
+Normalmente no hay que hacer nada: al fusionar en `main` un cambio de `worker.js`, el workflow **Desplegar worker en Cloudflare** lo publica solo (ver §2.7).
+
+Si el workflow fallara y hubiera que hacerlo a mano:
 1. Copia el archivo en texto plano desde https://raw.githubusercontent.com/serbenda/marquesina/main/worker.js con Ctrl/Cmd + A y Ctrl/Cmd + C.
 2. Cloudflare → **Compute (Workers)** → `marquesina` → **Edit code**.
 3. Borra todo el contenido del editor y pega con **Ctrl/Cmd + V**. El menú del clic derecho a veces no deja pegar; usa el teclado.
@@ -109,6 +113,19 @@ Cloudflare → `marquesina` → **Metrics** (o *Observability*). El plan gratuit
 
 ---
 
+### 2.7 Despliegue automático desde GitHub (una vez)
+El workflow `.github/workflows/worker.yml` despliega el worker con wrangler. Necesita un token de Cloudflare guardado en GitHub:
+
+1. **Crear el token en Cloudflare:** icono de perfil (arriba a la derecha) → **My Profile** → **API Tokens** → **Create Token** → plantilla **Edit Cloudflare Workers** → **Use template**.
+   - En *Account Resources*, elige la cuenta `Serbenda@gmail.com's Account`. En *Zone Resources*, **All zones** (no se usa ninguna zona).
+   - **Continue to summary** → **Create Token**. Copia el token: solo se muestra una vez.
+2. **Guardarlo en GitHub:** repo `marquesina` → **Settings** → **Secrets and variables** → **Actions** → **New repository secret**.
+   - Name: `CLOUDFLARE_API_TOKEN`
+   - Secret: el token copiado.
+3. **Probarlo:** repo → **Actions** → *Desplegar worker en Cloudflare* → **Run workflow**. Debe terminar en verde con "Worker desplegado y respondiendo".
+
+El token solo permite gestionar Workers. Si se filtra, se revoca en la misma pantalla de API Tokens y se crea otro.
+
 ## 3. GitHub Pages (web)
 
 ### 3.1 Configuración (una vez)
@@ -121,7 +138,15 @@ Cloudflare → `marquesina` → **Metrics** (o *Observability*). El plan gratuit
 2. Fusionar la PR. En **Actions** se ejecuta *Publicar en GitHub Pages* (unos 30–60 s).
 3. Ver el cambio en `https://bendi.dev/marquesina/?v=N`, o con Ctrl/Cmd + Shift + R, para saltarse la caché de unos 10 minutos.
 
-**Orden cuando un cambio toca la web y el worker a la vez** (por ejemplo, una ruta nueva): primero despliega el worker (paso 2.3), comprueba que funciona (paso 4) y después fusiona la PR de la web.
+**Cambios que tocan la web y el worker a la vez:** al fusionar se ejecutan los dos workflows en paralelo. El del worker tarda menos de un minuto; si la web nueva depende de una ruta nueva del worker, puede fallar durante ese rato.
+
+**App instalada (service worker):** la página se pide siempre a la red primero, así que los cambios llegan solos. Si cambias `sw.js` o la lista de archivos que guarda, sube `VERSION` en `sw.js` (por ejemplo `marquesina-v2`) para que los móviles borren la caché anterior.
+
+### 3.4 Avisos del chequeo horario
+El workflow **Chequeo de marquesina** (`healthcheck.yml`) comprueba cada hora la web, el Consorcio y EMT.
+- **Recibir el email si falla:** GitHub → tu perfil → **Settings** → **Notifications** → **System → Actions**: activa las notificaciones por email (*Only notify for failed workflows*).
+- **Ver qué ha fallado:** repo → **Actions** → la ejecución en rojo → el paso que falló muestra la respuesta recibida.
+- **Si deja de ejecutarse:** GitHub desactiva los workflows programados tras 60 días sin actividad en el repo. Reactívalo en **Actions** → *Chequeo de marquesina* → **Enable workflow**.
 
 ### 3.3 Autoría de los commits
 Commits firmados como `Sergio Santiago Bendaña Quesada <serbenda@gmail.com>`. Los merges que hace GitHub al fusionar una PR usan el nombre del perfil de GitHub. Al fusionar se puede elegir el email en el desplegable *Commit email*.
@@ -162,5 +187,7 @@ El worker devuelve el código que da EMT para cada forma de entrar, sin incluir 
 - [ ] Las tres comprobaciones del §4 responden bien.
 - [ ] La aplicación `marquesina` sigue activa en Mobility Labs.
 - [ ] El uso del worker en Cloudflare está lejos del límite diario.
-- [ ] El workflow de Pages sigue en verde y sin avisos de acciones obsoletas.
+- [ ] Los workflows (Pages, worker y chequeo) siguen en verde y sin avisos de acciones obsoletas.
+- [ ] El chequeo horario sigue activo (no desactivado por inactividad).
+- [ ] El token `CLOUDFLARE_API_TOKEN` sigue siendo válido (Cloudflare → API Tokens).
 - [ ] La API del Consorcio mantiene el mismo formato (ver ARQUITECTURA §3.2).
