@@ -95,6 +95,7 @@ input,select{font:15px var(--body);color:var(--fg);background:var(--bg);border:1
       <span id="ringTxt">60</span>
     </div>
     <button id="btnRefresh" aria-label="Actualizar ahora">↻</button>
+    <button id="btnNear" title="Usar mi ubicación para cargar las paradas más cercanas">Cerca de mí</button>
     <button id="btnFind" aria-pressed="false" title="Toca el mapa para ver las paradas del Consorcio cercanas">Buscar paradas</button>
     <button id="btnCfg">Ajustes</button>
   </div>
@@ -132,11 +133,14 @@ input,select{font:15px var(--body);color:var(--fg);background:var(--bg);border:1
 // ---------- Configuración ----------
 // Proxy propio en Cloudflare: viene puesto para que nadie tenga que configurarlo
 const PROXY = "https://marquesina.serbenda.workers.dev";
-const DEF = {stops:"72", email:"", pass:"", crtm:"", proxy:PROXY, base:"https://openapi.emtmadrid.es", every:60};
+// Paradas de ejemplo en Alcobendas (Marqués de la Valdavia) para que la web arranque en vivo
+const DEF = {stops:"72", email:"", pass:"", crtm:"06756, 06758", proxy:PROXY, base:"https://openapi.emtmadrid.es", every:60};
 const store = {
   get(){
     let v; try{ v = {...DEF, ...JSON.parse(localStorage.getItem("marquesina")||"{}")}; }catch{ v = {...DEF}; }
     if (!v.proxy) v.proxy = PROXY;   // ajustes antiguos guardados sin proxy
+    // Si no hay ninguna parada y no se eligió la demo a propósito, arrancar con las de ejemplo
+    if (!v.crtm.trim() && !(v.email && v.pass) && !v.demo) v.crtm = DEF.crtm;
     return v;
   },
   set(v){ try{ localStorage.setItem("marquesina", JSON.stringify(v)); }catch{} }
@@ -144,7 +148,7 @@ const store = {
 let cfg = store.get();
 const hasEmt  = () => !!(cfg.email && cfg.pass);
 const hasCrtm = () => !!(cfg.crtm.trim() && cfg.proxy);
-const isLive  = () => hasEmt() || hasCrtm();
+const isLive  = () => !cfg.demo && (hasEmt() || hasCrtm());
 
 // Colores por línea: estables según el número
 const PALETTE = ["#2b6cb0","#c0392b","#1f8a5b","#8e44ad","#d35400","#16808a","#b7950b","#5d6d7e"];
@@ -297,7 +301,7 @@ function renderList(){
       </div>`;
     }).join("") || '<p class="empty">No hay autobuses previstos ahora mismo.</p>';
     return `<div class="stopname">${s.name} · ${s.id}</div>${rows}`;
-  }).join("") + (isLive() ? "" : '<p class="empty">Esto es una demo. Pulsa <b>Buscar paradas</b> y toca el mapa para ver los autobuses reales de tu parada.</p>');
+  }).join("") + (isLive() ? "" : '<p class="empty">Esto es una demo. Pulsa <b>Cerca de mí</b> o <b>Buscar paradas</b> para ver los autobuses reales de tu parada.</p>');
 }
 
 function renderMap(){
@@ -380,12 +384,12 @@ document.getElementById("btnCfg").onclick = ()=>{
 };
 document.getElementById("cfgForm").addEventListener("submit", ()=>{
   cfg = {stops:fStops.value.trim()||DEF.stops, email:fEmail.value.trim(), pass:fPass.value,
-         crtm:fCrtm.value.trim(), proxy:(fProxy.value.trim() || PROXY).replace(/\/$/,""),
+         demo:false, crtm:fCrtm.value.trim(), proxy:(fProxy.value.trim() || PROXY).replace(/\/$/,""),
          base:(fBase.value.trim()||DEF.base).replace(/\/$/,""), every:+fEvery.value};
   store.set(cfg); token = null; fitted = false; refresh();
 });
 document.getElementById("btnDemo").onclick = ()=>{
-  cfg = {...cfg, email:"", pass:"", crtm:""}; store.set(cfg); fitted = false; dlg.close(); refresh();
+  cfg = {...cfg, demo:true}; store.set(cfg); fitted = false; dlg.close(); refresh();
 };
 
 // ---------- Buscar paradas del Consorcio tocando el mapa ----------
@@ -421,10 +425,27 @@ document.addEventListener("click", e=>{
   const code = e.target.dataset && e.target.dataset.add; if (!code) return;
   const list = cfg.crtm.split(/[,\s]+/).filter(Boolean);
   if (!list.includes(code)) list.push(code);
-  cfg = {...cfg, crtm:list.join(", ")}; store.set(cfg);
+  cfg = {...cfg, demo:false, crtm:list.join(", ")}; store.set(cfg);
   e.target.textContent = "Añadida"; e.target.disabled = true;
   refresh();
 });
+// ---------- Cerca de mí: paradas más cercanas a la ubicación del usuario ----------
+document.getElementById("btnNear").onclick = ()=>{
+  if (!navigator.geolocation){ showNote("Este navegador no permite usar la ubicación."); return; }
+  showNote("Buscando tu ubicación…");
+  navigator.geolocation.getCurrentPosition(async p=>{
+    try{
+      const {latitude:lat, longitude:lng} = p.coords;
+      const found = (await crtmNearest(lat, lng))
+        .sort((a,b)=>map.distance([lat,lng],a.pos)-map.distance([lat,lng],b.pos)).slice(0,3);
+      if (!found.length){ showNote("No hay paradas del Consorcio cerca de ti. Si estás en Madrid capital, usa las paradas de EMT."); return; }
+      cfg = {...cfg, demo:false, crtm:found.map(s=>s.code).join(", ")}; store.set(cfg);
+      fitted = false; showNote(`Cargadas ${found.length} paradas cerca de ti.`); refresh();
+    }catch{ showNote("No se pudo consultar el Consorcio. Inténtalo de nuevo en un momento."); }
+  }, ()=> showNote("No se pudo obtener tu ubicación. Revisa el permiso de ubicación del navegador."),
+  {enableHighAccuracy:true, timeout:10000});
+};
+
 let noteTimer;
 function showNote(msg){
   const p = document.getElementById("note");

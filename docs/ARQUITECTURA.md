@@ -50,7 +50,7 @@ flowchart LR
 - **Llamadas** (siempre vía `https://marquesina.serbenda.workers.dev/crtm/...`):
   - `GetStops.php?codStop=8_06756`: nombre y coordenadas de la parada. Se guarda en caché en memoria mientras la página está abierta.
   - `GetStopsTimes.php?codStop=8_06756&type=1&orderBy=2&stopTimesByIti=3`: próximas llegadas (`stopTimes.times.Time[]`, con `line.shortDescription`, `destination`, `time` en ISO y `codIssue`).
-  - `GetNearestStopsByLocation.php?latitude=..&longitude=..&mode=&method=1&precision=350`: paradas cercanas a un punto. Lo usa el botón **Buscar paradas**.
+  - `GetNearestStopsByLocation.php?latitude=..&longitude=..&mode=&method=1&precision=350`: paradas cercanas a un punto. Lo usan los botones **Buscar paradas** (punto tocado en el mapa) y **Cerca de mí** (ubicación del navegador; se quedan las 3 más cercanas).
 - **Peculiaridades:**
   - Cuando solo hay un elemento, la API devuelve un objeto en vez de una lista. Por eso existe `asArray()`.
   - El tiempo restante se calcula como `time − actualDate`, ambos dados por la API, para no depender del reloj del usuario.
@@ -66,8 +66,8 @@ Teselas de OpenStreetMap (`tile.openstreetmap.org`) con atribución. Para un uso
 
 1. **Arranque:** lee los ajustes de `localStorage` (clave `marquesina`) y los combina con los valores por defecto (`DEF`). Si no hay proxy guardado, usa `PROXY`.
 2. **Modo:**
-   - *En vivo*, si hay credenciales de EMT o paradas del Consorcio.
-   - *Demo*, si no hay nada: buses simulados que se acercan a Cibeles, para enseñar cómo funciona.
+   - *En vivo*, si hay credenciales de EMT o paradas del Consorcio. Sin ajustes guardados se usan las paradas de ejemplo `06756, 06758` (Alcobendas, constante `DEF.crtm`), así la web arranca en vivo para cualquiera.
+   - *Demo*, solo si el usuario la elige (Ajustes → Usar demo, campo `demo: true`): buses simulados que se acercan a Cibeles.
 3. **Ciclo:** `setInterval(tick, 1000)`.
    - Cada segundo se actualizan la cuenta atrás del anillo y los minutos de la lista (restando el tiempo transcurrido desde la última consulta, sin volver a llamar a la API).
    - Cuando llega a cero, `refresh()` consulta todas las paradas en paralelo (`Promise.all`). Si una falla, se muestra su error y las demás siguen funcionando.
@@ -85,6 +85,7 @@ Teselas de OpenStreetMap (`tile.openstreetmap.org`) con atribución. Para un uso
 | `proxy` | URL del worker. Vacío en el formulario = usar `PROXY` |
 | `base` | URL de la API de EMT |
 | `every` | Segundos entre consultas (30, 60 o 120) |
+| `demo` | `true` si el usuario eligió el modo demo |
 
 ## 5. El proxy (`worker.js`)
 
@@ -141,6 +142,6 @@ Mejora posible: desplegarlo desde GitHub Actions con `wrangler` y un token de Cl
 
 - Aviso de "sal ya" según el tiempo que se tarda andando a la parada.
 - Convertir la web en PWA (instalable y con icono).
-- Paradas por defecto o compartibles por enlace.
+- Paradas compartibles por enlace.
 - Despliegue automático del worker desde GitHub Actions.
 - Credenciales de EMT en el worker para que funcione sin registro.
