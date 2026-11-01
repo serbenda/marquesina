@@ -21,6 +21,7 @@
  *   6. Leer el Consorcio ..... parseCrtmTimes, parseCrtmVehicles
  *   7. Cuándo salir .......... groupByLine, leaveInfo, bestLeave
  *   8. Avisos programados .... alertActive, leaveMessage
+ *   9. Compartir por enlace .. shareParam, parseShareParam
  *
  * VOCABULARIO
  *   eta    Segundos que faltan para que el bus llegue a la parada.
@@ -374,4 +375,42 @@ export function leaveMessage(best) {
     body: `${group.dest} · pasa en ${fmtEta(li.bus.eta).txt} min. Tardas ${meta.walk} min andando.`,
     tag: `${stop.id}-${group.line}`,
   };
+}
+
+// =====================================================================================================
+// 9. Compartir paradas por enlace
+// =====================================================================================================
+// Enlace: https://bendi.dev/marquesina/?paradas=emt:69,crtm:06756,crtm:4_278
+// Solo viajan los códigos de parada: nunca los nombres propios, los minutos andando ni los avisos.
+
+const SHARE_MAX = 20;
+const EMT_CODE = /^\d{1,6}$/;
+const CRTM_CODE = /^(\d{1,2}_)?\d{1,6}$/;
+
+/**
+ * Texto del parámetro `paradas` a partir de los ajustes.
+ * @param {{stops: string, crtm: string}} cfg  Las listas de paradas tal como se guardan ("69, 72").
+ * @returns {string}
+ * @example shareParam({stops: "69", crtm: "06756, 4_278"}) // "emt:69,crtm:06756,crtm:4_278"
+ */
+export function shareParam(cfg) {
+  const list = s => String(s || "").split(/[,\s]+/).filter(Boolean);
+  return [...list(cfg.stops).map(c => `emt:${c}`), ...list(cfg.crtm).map(c => `crtm:${c}`)].slice(0, SHARE_MAX).join(",");
+}
+
+/**
+ * Lee el parámetro `paradas` de un enlace compartido. Descarta lo que no sea un código válido
+ * (el enlace puede venir de cualquiera) y se queda como mucho con 20 paradas, sin repetir.
+ * @param {string} param
+ * @returns {{emt: string[], crtm: string[]}}
+ * @example parseShareParam("emt:69,crtm:06756,xss:<b>,crtm:06756") // {emt: ["69"], crtm: ["06756"]}
+ */
+export function parseShareParam(param) {
+  const out = { emt: [], crtm: [] };
+  for (const item of String(param || "").split(",").slice(0, SHARE_MAX)) {
+    const [net, code] = item.trim().split(":");
+    if (net === "emt" && EMT_CODE.test(code) && !out.emt.includes(code)) out.emt.push(code);
+    if (net === "crtm" && CRTM_CODE.test(code) && !out.crtm.includes(code)) out.crtm.push(code);
+  }
+  return out;
 }

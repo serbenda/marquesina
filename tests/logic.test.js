@@ -204,3 +204,17 @@ test("EMT 999999 (más de 20 min) se muestra como +20 y no se descuenta", () => 
   assert.deepEqual(g[0].items.map(i => i.eta), [500, 999999]);
   assert.equal(fmtEta(g[0].items[1].eta).txt, "+20");
 });
+
+test("compartir paradas: el enlace lleva solo los códigos y se valida al abrirlo", async () => {
+  const { shareParam, parseShareParam } = await import("../logic.js");
+  assert.equal(shareParam({ stops: "69, 72", crtm: "06756 4_278" }), "emt:69,emt:72,crtm:06756,crtm:4_278");
+  assert.equal(shareParam({ stops: "", crtm: "" }), "");
+  assert.deepEqual(parseShareParam("emt:69,crtm:06756,crtm:4_278"), { emt: ["69"], crtm: ["06756", "4_278"] });
+  // Lo que no es un código válido se descarta, sin repetir
+  assert.deepEqual(parseShareParam("emt:69,emt:69,xss:<b>,emt:abc,crtm:1234567,crtm:06756,raro"), { emt: ["69"], crtm: ["06756"] });
+  assert.deepEqual(parseShareParam(null), { emt: [], crtm: [] });
+  // Como mucho 20 paradas
+  assert.equal(parseShareParam(Array.from({ length: 30 }, (_, i) => `emt:${i + 1}`).join(",")).emt.length, 20);
+  // Ida y vuelta
+  assert.deepEqual(parseShareParam(shareParam({ stops: "69", crtm: "06756" })), { emt: ["69"], crtm: ["06756"] });
+});

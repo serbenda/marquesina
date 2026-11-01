@@ -1,57 +1,51 @@
 name: Chequeo de marquesina
 
-# Cada hora comprueba que la web, el Consorcio y EMT responden a través del worker.
-# Si algo falla, el workflow sale en rojo y GitHub avisa por email al dueño del repo
-# (Settings > Notifications > Actions: "Send notifications for failed workflows only").
+# Cada hora comprueba que la web, el worker (por sus tres caminos), EMT, el Consorcio y los avisos
+# responden, y cuánto tardan. Si algo falla o va demasiado lento, el workflow sale en rojo y GitHub
+# avisa por email al dueño del repo (Settings > Notifications > Actions: "Only notify for failed workflows").
+# Los tiempos quedan en la pestaña Summary de cada ejecución. Ver docs/OPERACIONES.md §6.
+# Ojo: se ejecuta desde EE. UU.; no ve los bloqueos de operadoras españolas (para eso, e2e.yml simula uno).
 
 on:
   schedule:
     - cron: "17 * * * *"
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   check:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 8
     steps:
-      - name: Web publicada
+      - uses: actions/checkout@v7
+
+      - name: Cabecera del resumen
         run: |
-          curl -fsS --retry 2 --retry-delay 10 "https://bendi.dev/marquesina/" | grep -q "<title>Marquesina</title>"
-          echo "OK web"
+          echo "### Chequeo de marquesina" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Comprobación | Tiempo | Nota |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|---|---|---|" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Web publicada
+        run: .github/scripts/check.sh "Web publicada" "https://bendi.dev/marquesina/" "<title>Marquesina</title>" 10
 
       - name: Consorcio a través del worker
-        run: |
-          body=$(curl -fsS --retry 2 --retry-delay 10 "https://api.bendi.dev/crtm/GetStopsTimes.php?codStop=8_06756&type=1&orderBy=2&stopTimesByIti=3")
-          echo "$body" | grep -q '"stopTimes"' || { echo "Respuesta inesperada del Consorcio:"; echo "$body" | head -c 400; exit 1; }
-          echo "OK Consorcio"
+        run: .github/scripts/check.sh "Consorcio (llegadas)" "https://api.bendi.dev/crtm/GetStopsTimes?codStop=8_06756&type=1&orderBy=2&stopTimesByIti=3" '"stopTimes"' 15
 
       - name: EMT a través del worker
-        run: |
-          body=$(curl -sS --retry 2 --retry-delay 10 "https://api.bendi.dev/emt/arrives/69")
-          echo "$body" | grep -q '"code":"00"' || { echo "EMT no responde bien:"; echo "$body" | head -c 400; exit 1; }
-          echo "OK EMT"
+        run: .github/scripts/check.sh "EMT (llegadas)" "https://api.bendi.dev/emt/arrives/69" '"code":"00"' 10
 
       - name: Avisos (clave VAPID del worker)
-        run: |
-          body=$(curl -fsS --retry 2 --retry-delay 10 "https://api.bendi.dev/push/key")
-          echo "$body" | grep -q '"publicKey"' || { echo "El worker no devuelve la clave de los avisos:"; echo "$body" | head -c 400; exit 1; }
-          echo "OK avisos"
+        run: .github/scripts/check.sh "Avisos (clave)" "https://api.bendi.dev/push/key" '"publicKey"' 5
 
       - name: Dirección alternativa (workers.dev)
-        run: |
-          curl -fsS --retry 2 --retry-delay 10 "https://marquesina.serbenda.workers.dev/push/key" | grep -q '"publicKey"'
-          echo "OK workers.dev"
+        run: .github/scripts/check.sh "Camino 2 · workers.dev" "https://marquesina.serbenda.workers.dev/push/key" '"publicKey"' 5
 
       - name: Repetidor de respaldo (Deno Deploy)
-        # Fuera de Cloudflare, para los bloqueos de LaLiga (docs/RESPALDO.md). Comprueba que llega al worker.
-        run: |
-          curl -fsS --retry 2 --retry-delay 10 "https://marquesina.serbenda.deno.net/push/key" | grep -q '"publicKey"'
-          echo "OK repetidor"
+        # Fuera de Cloudflare, para los bloqueos de LaLiga (docs/RESPALDO.md)
+        run: .github/scripts/check.sh "Camino 3 · repetidor Deno" "https://marquesina.serbenda.deno.net/push/key" '"publicKey"' 5
 
       - name: Búsqueda de paradas a través del repetidor
-        # Prueba real por Deno Deploy (no simulada): Deno rechaza las rutas que acaban en ".php",
-        # así que la web y este chequeo piden la búsqueda sin ".php" (ver docs/OPERACIONES.md, INC-6).
-        run: |
-          body=$(curl -fsS --retry 2 --retry-delay 10 "https://marquesina.serbenda.deno.net/crtm/GetNearestStopsByLocation?latitude=40.54&longitude=-3.64&mode=&method=1&precision=500")
-          echo "$body" | grep -q '"stops"' || { echo "La búsqueda por el repetidor no devuelve paradas:"; echo "$body" | head -c 400; exit 1; }
-          echo "OK búsqueda por el repetidor"
+        # Prueba real por Deno: rechaza las rutas que acaban en ".php" (docs/OPERACIONES.md, INC-6)
+        run: .github/scripts/check.sh "Búsqueda por el repetidor" "https://marquesina.serbenda.deno.net/crtm/GetNearestStopsByLocation?latitude=40.540&longitude=-3.640&mode=&method=1&precision=500" '"stops"' 25
