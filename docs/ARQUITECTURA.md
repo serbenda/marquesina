@@ -2,6 +2,8 @@
 
 Este documento explica cómo está montada marquesina, de dónde salen los datos y qué hay que hacer para mantenerla. Es la referencia para cualquier cambio. El [README](../README.md) cubre solo el uso, y los pasos concretos en Mobility Labs, Cloudflare y GitHub están en [MANTENIMIENTO.md](MANTENIMIENTO.md).
 
+> ¿Empiezas de cero? Lee primero la [guía paso a paso con diagramas](GUIA.md).
+
 ## 1. Qué es
 
 Una web estática que muestra en un mapa los autobuses que van a llegar a las paradas que elige el usuario, con los minutos que faltan, y se actualiza sola cada 15 s por defecto (10 s, 30 s o 1 min a elegir).
