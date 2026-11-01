@@ -52,6 +52,10 @@ Las tres direcciones, en orden: `api.bendi.dev` → `marquesina.serbenda.workers
 
 ## 3. Montarlo paso a paso (una sola vez, ~10 min)
 
+> ✅ **Estado:** montado el 1 de noviembre de 2026 (organización `serbenda`, app `marquesina`). Probado ese mismo día desde una red con el bloqueo activo: la web eligió sola el repetidor y mostró las paradas **En vivo**. El chequeo horario lo vigila.
+
+⚠️ **El inicio de sesión de Deno Deploy usa una verificación anti-robots alojada en Cloudflare**, así que durante un bloqueo tampoco carga. Hay que hacerlo cuando no haya partido, con una VPN o desde otra red.
+
 ### Paso 1 · Crear la cuenta
 
 1. 🖱️ Entra en **https://console.deno.com**.
@@ -67,13 +71,15 @@ Las tres direcciones, en orden: `api.bendi.dev` → `marquesina.serbenda.workers
 | Campo | Valor |
 |---|---|
 | Framework preset | **No Preset** |
-| Install command | *(vacío)* |
+| Install command | *(vacío; Deno propone `deno install`: bórralo)* |
 | Build command | *(vacío)* |
 | Runtime configuration | **Dynamic** |
 | Dynamic Entrypoint | `relay/main.js` |
+| Static directory | *(desaparece con Dynamic; si propone `.`, es que sigue en Static)* |
+| Deployment targets | **Managed** · **Free Regions** |
 
 4. ⌨️ Nombre de la app: `marquesina`.
-5. **No** hace falta ninguna variable de entorno ni secreto.
+5. **No** hace falta ninguna variable de entorno ni secreto. El aviso *Your organization is not verified* se puede ignorar: los límites gratuitos sobran.
 6. 🖱️ **Create App** y espera a que el registro termine en verde.
 
 ✅ **Bien si:** `https://marquesina.serbenda.deno.net/push/key` muestra `{"publicKey":"…"}` (la misma clave que `https://api.bendi.dev/push/key`).
@@ -82,7 +88,7 @@ Las tres direcciones, en orden: `api.bendi.dev` → `marquesina.serbenda.workers
 
 ### Paso 3 · Actualizaciones
 
-Deno Deploy vuelve a publicar el repetidor solo cada vez que cambia la rama `main`. No hay que hacer nada más.
+Deno Deploy vuelve a publicar el repetidor solo cada vez que cambia la rama `main`. No hay que hacer nada más. Cada publicación aparece en **console.deno.com → serbenda → marquesina → Builds**, y los registros en **Logs**.
 
 ## 4. Comprobaciones
 
