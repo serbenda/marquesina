@@ -186,3 +186,40 @@ test("/emt/near consulta las paradas cercanas en la API de EMT (El Pardo)", asyn
   assert.ok(calls.some(u => u.endsWith("/stops/arroundxy/-3.775/40.518/600/")), "longitud, latitud y radio en el orden de EMT");
   assert.equal((await worker.default.fetch(new Request("https://w/emt/near/x/y/600"), {}, {})).status, 404);
 });
+
+test("/crtm/stop no espera más de 2,5 s por la posición de los buses", async (t) => {
+  const times = JSON.parse(readFileSync(new URL("./fixtures/crtm-stoptimes-06756.json", import.meta.url), "utf8"));
+  // Líneas que el worker aún no tiene en memoria (los tests anteriores ya cargaron las reales)
+  for (const x of times.stopTimes.times.Time) x.line.codLine = "8__T" + x.line.codLine;
+  t.mock.method(globalThis, "fetch", async (url) => {
+    url = String(url);
+    if (url.includes("GetStops.php")) return Response.json({ stops: { Stop: { name: "X", coordinates: { latitude: 1, longitude: 2 } } } });
+    if (url.includes("GetStopsTimes")) return Response.json(times);
+    // El Consorcio tarda mucho en dar los recorridos de las líneas
+    if (url.includes("GetLinesInformation")) { await new Promise(r => setTimeout(r, 4000)); return Response.json({}); }
+    return Response.json({});
+  });
+  const pending = [];
+  const t0 = Date.now();
+  const res = await worker.default.fetch(new Request("https://w/crtm/stop/8_09999"), {}, { waitUntil: p => pending.push(p) });
+  const ms = Date.now() - t0;
+  const j = await res.json();
+  assert.ok(ms < 3500, `respondió en ${ms} ms`);
+  assert.equal(j.stopTimes.times.Time.length, 6);   // los tiempos llegan igualmente
+  assert.deepEqual(j.vehicles, []);
+  assert.equal(pending.length, 1);                  // la posición se sigue cargando en segundo plano
+  await Promise.all(pending);
+});
+
+test("/emt/near guarda en caché la respuesta 'sin paradas' (código 01) sin reintentar", async (t) => {
+  let logins = 0;
+  t.mock.method(globalThis, "fetch", async (url) => {
+    url = String(url);
+    if (url.includes("/user/login/")) { logins++; return Response.json({ code: "01", data: [{ accessToken: "tok2", tokenSecExpiration: 3600 }] }); }
+    if (url.includes("/stops/arroundxy/")) return Response.json({ code: "01", description: "NO data found" });
+    throw new Error("URL inesperada " + url);
+  });
+  const res = await worker.default.fetch(new Request("https://w/emt/near/40.54000/-3.64000/350"), { EMT_EMAIL: "a", EMT_PASSWORD: "b" }, {});
+  assert.equal((await res.json()).code, "01");
+  assert.ok(logins <= 1, "no fuerza un segundo inicio de sesión");
+});

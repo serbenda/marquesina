@@ -294,10 +294,18 @@ function busIcon(line, mode, dx = 0, dy = 0){
 }
 const stopIcon = L.divIcon({className:"", iconSize:[18,18], iconAnchor:[9,9], html:'<div class="stop-icon"></div>'});
 
+// Ninguna petición puede quedarse colgada: a los 10 s se da por fallida (y se usan los últimos datos)
+async function getJson(url, ms = 10000){
+  const c = new AbortController(); const t = setTimeout(() => c.abort(), ms);
+  try { return await (await fetch(url, {signal: c.signal})).json(); }
+  catch (e) { throw e.name === "AbortError" ? new TypeError("Tiempo de espera agotado") : e; }
+  finally { clearTimeout(t); }
+}
+
 // ---------- API EMT ----------
 // El worker de marquesina inicia sesión en EMT con las claves de la aplicación
 async function arrivals(stop){
-  const j = await (await fetch(`${PROXY}/emt/arrives/${stop}`)).json();
+  const j = await getJson(`${PROXY}/emt/arrives/${stop}`);
   return parseEmt(j, stop);
 }
 
@@ -308,7 +316,7 @@ const crtmUrl = (path) => `${PROXY}/crtm/${path}`;
 // Una sola petición por parada: el worker junta datos de la parada, tiempos y posición de los buses
 async function crtmArrivals(raw){
   const code = crtmCode(raw.trim());
-  const j = await (await fetch(`${PROXY}/crtm/stop/${code}`)).json();
+  const j = await getJson(`${PROXY}/crtm/stop/${code}`);
   const {buses} = parseCrtmTimes(j, code);
   const name = (j.stop && j.stop.name) || `Parada ${code.replace(/^\d+_/,"")}`;
   return {id: code.replace(/^8_/,""), name, pos: j.stop && j.stop.pos, crtm: true, vehicles: j.vehicles || [], buses};
@@ -318,8 +326,8 @@ async function crtmArrivals(raw){
 async function crtmNearest(lat, lng, radius = 350){
   const base = PROXY;
   const [crtm, emt] = await Promise.allSettled([
-    fetch(crtmUrl(`GetNearestStopsByLocation.php?latitude=${lat.toFixed(5)}&longitude=${lng.toFixed(5)}&mode=&method=1&precision=${Math.round(radius)}`)).then(r=>r.json()).then(parseNearest),
-    fetch(`${base}/emt/near/${lat.toFixed(5)}/${lng.toFixed(5)}/${Math.round(radius)}`).then(r=>r.json()).then(parseEmtNear),
+    getJson(crtmUrl(`GetNearestStopsByLocation.php?latitude=${lat.toFixed(5)}&longitude=${lng.toFixed(5)}&mode=&method=1&precision=${Math.round(radius)}`)).then(parseNearest),
+    getJson(`${base}/emt/near/${lat.toFixed(5)}/${lng.toFixed(5)}/${Math.round(radius)}`).then(parseEmtNear),
   ]);
   if (crtm.status === "rejected" && emt.status === "rejected") throw new Error("Sin datos de paradas");
   return mergeStops(emt.value || [], crtm.value || []);
@@ -470,18 +478,28 @@ async function doRefresh(){
   if (!isLive()){ last = []; }
   else {
     const jobs = [];
-    if (hasEmt()) jobs.push(...stops.map(s=>arrivals(s).catch(err=>({id:String(s), error:
-      err instanceof TypeError ? `No se pudo conectar con EMT (parada ${s}).` : err.message}))));
-    if (hasCrtm()) jobs.push(...cfg.crtm.split(/[,\s]+/).filter(Boolean).map(s=>crtmArrivals(s).catch(err=>({id:crtmCode(s).replace(/^8_/,""), crtm:true, error:
-      err instanceof TypeError ? `No se pudo conectar con el Consorcio (parada ${s}).` : err.message}))));
+    if (hasEmt()) jobs.push(...stops.map(s=>({key:`emt:${s}`, run:()=>arrivals(s).catch(err=>({id:String(s), error:
+      err instanceof TypeError ? `No se pudo conectar con EMT (parada ${s}).` : err.message}))})));
+    if (hasCrtm()) jobs.push(...cfg.crtm.split(/[,\s]+/).filter(Boolean).map(s=>{
+      const id = crtmCode(s).replace(/^8_/,"");
+      return {key:`crtm:${id}`, run:()=>crtmArrivals(s).catch(err=>({id, crtm:true, error:
+        err instanceof TypeError ? `No se pudo conectar con el Consorcio (parada ${s}).` : err.message}))};
+    }));
     // Si una parada falla, se mantienen sus últimos datos (hasta 15 min) marcados como antiguos
     const prev = new Map(last.filter(s=>!s.error).map(s=>[stopKey(s), s]));
-    const now = Date.now();
-    last = (await Promise.all(jobs)).map(r=>{
-      if (!r.error) return {...r, at: now};
-      const p = prev.get(stopKey(r));
-      return p && now - p.at < 15*60000 ? {...p, stale:true} : r;
-    });
+    const settle = (r, key) => {
+      if (!r.error) return {...r, at: Date.now()};
+      const p = prev.get(key);
+      return p && Date.now() - p.at < 15*60000 ? {...p, stale:true} : r;
+    };
+    // Cada parada se enseña en cuanto llega, sin esperar a las demás (mientras, se ven sus datos anteriores)
+    const results = jobs.map(j => prev.get(j.key) || null);
+    await Promise.all(jobs.map((j, i) => j.run().then(r => {
+      results[i] = settle(r, j.key);
+      last = results.filter(Boolean);
+      renderList();   // el mapa se redibuja al final, para encuadrar con todas las paradas
+    })));
+    last = results.filter(Boolean);
   }
   const allStale = isLive() && last.length && last.every(s=>s.stale || s.error);
   document.getElementById("mode").textContent = !isLive() ? "Sin paradas" : allStale ? "Sin conexión" : "En vivo";

@@ -111,9 +111,9 @@ async function emtNear(lat, lon, radius, env, ctx) {
     const token = await emtLogin(env, force);
     const res = await fetch(`${EMT}/v2/transport/busemtmad/stops/arroundxy/${lo}/${la}/${r}/`, { headers: { accessToken: token } });
     data = await res.json();
-    if (res.status !== 401 && data && data.data) break;
+    if (res.status !== 401 && data && (data.data || data.code === "01")) break;   // 01 = no hay paradas: respuesta válida
   }
-  if (cache && data && Array.isArray(data.data)) {
+  if (cache && data && (Array.isArray(data.data) || data.code === "01")) {
     const put = cache.put(key, new Response(JSON.stringify(data), { headers: { "Content-Type": "application/json", "Cache-Control": "max-age=86400" } })).catch(() => {});
     ctx && ctx.waitUntil ? ctx.waitUntil(put) : await put;
   }
@@ -157,7 +157,13 @@ function crtmItineraries(codLine) {
   return lineCache.get(codLine);
 }
 
-async function crtmStop(code) {
+// La posición de los buses no puede retrasar los tiempos: se espera como mucho VEHICLES_WAIT_MS.
+// Si tarda más (el Consorcio a veces tarda segundos en dar los recorridos), se termina en segundo plano
+// y se devuelve la última posición conocida (de hace menos de 1 min) o ninguna.
+const VEHICLES_WAIT_MS = 2500;
+const lastVehicles = new Map();   // parada -> {at, list}
+
+async function crtmStop(code, ctx) {
   const [info, times] = await Promise.all([
     crtmGet(`GetStops.php?codStop=${code}`, 86400).catch(() => ({})),
     crtmGet(`GetStopsTimes.php?codStop=${code}&type=1&orderBy=2&stopTimesByIti=3`),
@@ -168,7 +174,7 @@ async function crtmStop(code) {
   for (const t of asArray(times.stopTimes && times.stopTimes.times && times.stopTimes.times.Time))
     if (t.line && ["8", "9"].includes(String(t.line.codMode)) && !lines.has(`${t.line.codLine}|${t.direction}`))
       lines.set(`${t.line.codLine}|${t.direction}`, t);
-  const vehicles = (await Promise.all([...lines.values()].map(async t => {
+  const vehiclesP = Promise.all([...lines.values()].map(async t => {
     try {
       const its = await crtmItineraries(t.line.codLine);
       const it = its.find(i => i.dir == t.direction && i.stops.has(code)) || its.find(i => i.stops.has(code));
@@ -176,7 +182,13 @@ async function crtmStop(code) {
       const j = await crtmGet(`GetLineLocation.php?mode=${t.line.codMode}&codItinerary=${encodeURIComponent(it.cod)}&codLine=${encodeURIComponent(t.line.codLine)}&codStop=${code}&direction=${it.dir}`);
       return parseCrtmVehicles(j, { codLine: t.line.codLine, line: t.line.shortDescription, dest: (t.destination || "").replace(/^.*?-\s*/, "") || t.destination });
     } catch { return []; }   // si falla la posición de una línea, siguen valiendo los tiempos
-  }))).flat();
+  })).then(list => { const flat = list.flat(); lastVehicles.set(code, { at: Date.now(), list: flat }); return flat; });
+  let vehicles = await Promise.race([vehiclesP, new Promise(r => setTimeout(() => r(null), VEHICLES_WAIT_MS))]);
+  if (vehicles === null) {
+    if (ctx && ctx.waitUntil) ctx.waitUntil(vehiclesP.catch(() => {}));
+    const prev = lastVehicles.get(code);
+    vehicles = prev && Date.now() - prev.at < 60000 ? prev.list : [];
+  }
   return {
     stop: { name: s.name || (times.stopTimes && times.stopTimes.stop && times.stopTimes.stop.name) || "",
             pos: s.coordinates ? [s.coordinates.latitude, s.coordinates.longitude] : null },
@@ -307,7 +319,7 @@ export default {
     // ---- Parada del Consorcio completa (una sola petición) ----
     const cs = url.pathname.match(/^\/crtm\/stop\/(\d{1,2}_\d{1,6}|\d{1,6})\/?$/);
     if (cs) {
-      try { return json(await crtmStop(crtmCode(cs[1])), 200, { ...cors, "Cache-Control": `max-age=${CACHE_SECONDS}` }); }
+      try { return json(await crtmStop(crtmCode(cs[1]), ctx), 200, { ...cors, "Cache-Control": `max-age=${CACHE_SECONDS}` }); }
       catch (e) { return json({ error: "No se pudo consultar el Consorcio" }, 502, cors); }
     }
 
