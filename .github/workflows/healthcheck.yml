@@ -1,0 +1,32 @@
+name: Chequeo de marquesina
+
+# Cada hora comprueba que la web, el Consorcio y EMT responden a través del worker.
+# Si algo falla, el workflow sale en rojo y GitHub avisa por email al dueño del repo
+# (Settings > Notifications > Actions: "Send notifications for failed workflows only").
+
+on:
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Web publicada
+        run: |
+          curl -fsS --retry 2 --retry-delay 10 "https://bendi.dev/marquesina/" | grep -q "<title>Marquesina</title>"
+          echo "OK web"
+
+      - name: Consorcio a través del worker
+        run: |
+          body=$(curl -fsS --retry 2 --retry-delay 10 "https://marquesina.serbenda.workers.dev/crtm/GetStopsTimes.php?codStop=8_06756&type=1&orderBy=2&stopTimesByIti=3")
+          echo "$body" | grep -q '"stopTimes"' || { echo "Respuesta inesperada del Consorcio:"; echo "$body" | head -c 400; exit 1; }
+          echo "OK Consorcio"
+
+      - name: EMT a través del worker
+        run: |
+          body=$(curl -sS --retry 2 --retry-delay 10 "https://marquesina.serbenda.workers.dev/emt/arrives/69")
+          echo "$body" | grep -q '"code":"00"' || { echo "EMT no responde bien:"; echo "$body" | head -c 400; exit 1; }
+          echo "OK EMT"

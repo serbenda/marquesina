@@ -1,0 +1,36 @@
+name: Desplegar worker en Cloudflare
+
+# Despliega worker.js en Cloudflare cuando cambia en main (o a mano desde Actions).
+# Necesita el secreto del repo CLOUDFLARE_API_TOKEN (token con permiso "Edit Cloudflare Workers").
+
+on:
+  push:
+    branches: [main]
+    paths: [worker.js, wrangler.toml, .github/workflows/worker.yml]
+  workflow_dispatch:
+
+concurrency:
+  group: worker
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Comprobar que el código del worker es válido
+        run: node --check worker.js
+
+      - name: Desplegar con wrangler
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          command: deploy
+
+      - name: Comprobar que responde
+        run: |
+          sleep 10
+          curl -fsS "https://marquesina.serbenda.workers.dev/crtm/GetStops.php?codStop=8_06756" | grep -q "MARQU"
+          curl -fsS "https://marquesina.serbenda.workers.dev/emt/arrives/69" | grep -q '"code":"00"'
+          echo "Worker desplegado y respondiendo"

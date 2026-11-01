@@ -4,7 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Marquesina</title>
-<meta name="description" content="Mapa en tiempo real de los autobuses que llegan a tus paradas de EMT Madrid">
+<meta name="description" content="Tus autobuses de Madrid en el mapa, en tiempo real: cuánto les falta y cuándo salir de casa. EMT, interurbanos, Alcobendas y Sanse.">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" href="assets/icono-192.png">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+<meta name="theme-color" content="#d6402b">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Marquesina">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Figtree:wght@400;500;600&display=swap">
@@ -47,7 +54,20 @@ button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
 button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 
 .list{overflow-y:auto;padding:4px max(16px,env(safe-area-inset-right,0px)) calc(12px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px))}
-.stopname{font:700 15px var(--display);letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:14px 0 4px}
+.stophead{display:flex;align-items:center;gap:8px;margin:16px 0 2px}
+.stophead .alias{font:700 19px/1.1 var(--display);letter-spacing:.03em;text-transform:uppercase;color:var(--fg);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.stophead .star{color:var(--warn);font-size:15px}
+.stophead .edit{margin-left:auto;padding:4px 8px;font-size:12px}
+.stopsub{font-size:12px;color:var(--muted);margin:0 0 4px}
+.next{color:var(--muted);font-variant-numeric:tabular-nums}
+.chip.go{color:var(--ok)} .chip.late{color:var(--muted)}
+.hero{margin:12px 0 4px;padding:12px 14px;border-radius:10px;background:var(--fg);color:var(--panel);display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:center}
+.hero .badge{min-width:46px;padding:7px 6px}
+.hero .what{min-width:0;font-size:13px;line-height:1.3}
+.hero .what b{display:block;font:700 18px/1.1 var(--display);letter-spacing:.02em;text-transform:uppercase}
+.hero .when{text-align:right;font:700 30px/1 var(--display);font-variant-numeric:tabular-nums}
+.hero .when small{display:block;font:600 11px var(--body);letter-spacing:.06em;text-transform:uppercase;opacity:.75}
+.hero.now{background:var(--now);color:#fff}
 .row{display:grid;grid-template-columns:52px 1fr auto;gap:12px;align-items:center;padding:10px 0;border-bottom:1px solid var(--line);cursor:pointer}
 .row:last-child{border-bottom:0}
 .badge{font:700 22px/1 var(--display);color:#fff;border-radius:6px;padding:7px 0;text-align:center}
@@ -97,6 +117,7 @@ input,select{font:15px var(--body);color:var(--fg);background:var(--bg);border:1
     <button id="btnRefresh" aria-label="Actualizar ahora">↻</button>
     <button id="btnNear" title="Usar mi ubicación para cargar las paradas más cercanas">Cerca de mí</button>
     <button id="btnFind" aria-pressed="false" title="Toca el mapa para ver las paradas cercanas">Buscar paradas</button>
+    <button id="btnInstall" hidden>Instalar</button>
     <button id="btnCfg">Ajustes</button>
   </div>
   <p class="err note" id="note" hidden></p>
@@ -122,13 +143,31 @@ input,select{font:15px var(--body);color:var(--fg);background:var(--bg);border:1
   </form>
 </dialog>
 
+<dialog id="stopDlg">
+  <form class="dlg" id="stopForm" method="dialog">
+    <h2 id="stopDlgTitle">Parada</h2>
+    <p id="stopDlgSub"></p>
+    <label>Nombre (por ejemplo Casa, Cole, Trabajo)
+      <input id="fAlias" maxlength="24" autocomplete="off"></label>
+    <label>Minutos andando hasta la parada
+      <input id="fWalk" type="number" inputmode="numeric" min="0" max="60" placeholder="Sin indicar"></label>
+    <label style="flex-direction:row;align-items:center;gap:8px;font-size:14px;color:var(--fg)">
+      <input id="fFav" type="checkbox" style="width:18px;height:18px"> Favorita (siempre arriba)</label>
+    <div class="actions">
+      <button type="button" id="btnRemoveStop">Quitar parada</button>
+      <button type="submit" class="primary">Guardar</button>
+    </div>
+  </form>
+</dialog>
+
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script>
 // ---------- Configuración ----------
 // Proxy propio en Cloudflare: viene puesto para que nadie tenga que configurarlo
 const PROXY = "https://marquesina.serbenda.workers.dev";
 // Paradas de ejemplo en Alcobendas (Marqués de la Valdavia) para que la web arranque en vivo
-const DEF = {stops:"", crtm:"06756, 06758", proxy:PROXY, every:60};
+// meta: datos propios de cada parada -> {"emt:69": {alias:"Casa", walk:5, fav:true}, "crtm:06756": {...}}
+const DEF = {stops:"", crtm:"06756, 06758", proxy:PROXY, every:60, meta:{}};
 const store = {
   get(){
     let v; try{ v = {...DEF, ...JSON.parse(localStorage.getItem("marquesina")||"{}")}; }catch{ v = {...DEF}; }
@@ -136,6 +175,7 @@ const store = {
     delete v.email; delete v.pass; delete v.base;   // versiones anteriores guardaban una cuenta propia de EMT
     // Si no hay ninguna parada y no se eligió la demo a propósito, arrancar con las de ejemplo
     if (!v.crtm.trim() && !v.stops.trim() && !v.demo) v.crtm = DEF.crtm;
+    if (!v.meta || typeof v.meta !== "object") v.meta = {};
     return v;
   },
   set(v){ try{ localStorage.setItem("marquesina", JSON.stringify(v)); }catch{} }
@@ -144,6 +184,9 @@ let cfg = store.get();
 const hasEmt  = () => !!cfg.stops.trim();
 const hasCrtm = () => !!(cfg.crtm.trim() && cfg.proxy);
 const isLive  = () => !cfg.demo && (hasEmt() || hasCrtm());
+const stopKey = s => `${s.crtm ? "crtm" : "emt"}:${s.id}`;
+const metaOf  = s => cfg.meta[stopKey(s)] || {};
+const esc = t => String(t ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 // Colores por línea: estables según el número
 const PALETTE = ["#2b6cb0","#c0392b","#1f8a5b","#8e44ad","#d35400","#16808a","#b7950b","#5d6d7e"];
@@ -237,7 +280,7 @@ async function crtmNearest(lat, lng){
 }
 
 // ---------- Demo: buses simulados que se acercan a la parada ----------
-const DEMO_STOP = {id:"72", name:"Demo · Cibeles", pos:[40.4193,-3.6932]};
+const DEMO_STOP = {id:"72", name:"Demo · Cibeles", pos:[40.4193,-3.6932], demo:true};
 const demoBuses = [
   {key:"27-1", line:"27", dest:"Plaza Castilla", from:[40.4085,-3.6925], eta:420},
   {key:"14-2", line:"14", dest:"Pío XII",        from:[40.4120,-3.7030], eta:260},
@@ -270,22 +313,83 @@ function fmtEta(s){
 function status(s){ return s < 90 ? ["now","Llegando"] : s < 300 ? ["near","Cerca"] : ["far","En camino"]; }
 function fmtDist(m){ return m == null ? "" : m >= 1000 ? (m/1000).toFixed(1).replace(".",",")+" km" : m+" m"; }
 
+// Agrupa las llegadas de una parada por línea y destino: una fila por línea con sus próximos pasos
+function groupByLine(buses, elapsed){
+  const groups = new Map();
+  for (const b of buses.slice().sort((x,y)=>x.eta-y.eta)){
+    const eta = Math.max(0, b.eta - elapsed);
+    const k = `${b.line}|${b.dest}`;
+    if (!groups.has(k)) groups.set(k, {line:b.line, dest:b.dest, items:[]});
+    groups.get(k).items.push({...b, eta});
+  }
+  return [...groups.values()];
+}
+
+// Cuándo salir: el primer bus al que da tiempo llegar andando
+function leaveInfo(items, walkMin){
+  if (!walkMin) return null;
+  const walk = walkMin*60;
+  const target = items.find(b => b.eta >= walk - 30);   // 30 s de margen
+  if (!target) return {late:true};
+  return {bus:target, leave: target.eta - walk, missedFirst: target !== items[0]};
+}
+
+function chipFor(g, walkMin){
+  const first = g.items[0];
+  const li = leaveInfo(g.items, walkMin);
+  if (!li){ const [cls,lbl] = status(first.eta); return `<span class="chip ${cls}">${lbl}</span>`; }
+  if (li.late) return `<span class="chip late">No llegas</span>`;
+  if (li.leave <= 60) return `<span class="chip now">¡Sal ya!${li.missedFirst ? ` al de ${fmtEta(li.bus.eta).txt}′` : ""}</span>`;
+  const which = li.missedFirst ? ` al de ${fmtEta(li.bus.eta).txt}′` : "";   // si el primero ya no da tiempo
+  return `<span class="chip ${li.leave <= 180 ? "near" : "go"}">Sal en ${Math.floor(li.leave/60)} min${which}</span>`;
+}
+
+// Tarjeta principal: lo más urgente entre las paradas con minutos andando (favoritas primero)
+function heroHtml(stops, elapsed){
+  let best = null;
+  for (const s of stops){
+    if (s.error) continue;
+    const m = metaOf(s); if (!m.walk) continue;
+    for (const g of groupByLine(s.buses, elapsed)){
+      const li = leaveInfo(g.items, m.walk);
+      if (!li || li.late) continue;
+      const score = (m.fav ? 0 : 1e6) + li.leave;
+      if (!best || score < best.score) best = {score, s, g, li, m};
+    }
+  }
+  if (!best) return "";
+  const {s, g, li, m} = best;
+  const now = li.leave <= 60;
+  return `<div class="hero${now ? " now" : ""}">
+    <div class="badge" style="background:${colorFor(g.line)}">${esc(g.line)}</div>
+    <div class="what"><b>${esc(m.alias || s.name)}</b>${esc(g.dest)} · pasa en ${fmtEta(li.bus.eta).txt} min</div>
+    <div class="when">${now ? "¡Ya!" : Math.floor(li.leave/60) + "′"}<small>${now ? "sal ahora" : "para salir"}</small></div>
+  </div>`;
+}
+
 function renderList(){
   const el = document.getElementById("list");
-  if (!last.length){ el.innerHTML = '<p class="empty">Añade una parada en Ajustes.</p>'; return; }
+  if (!last.length){ el.innerHTML = '<p class="empty">Añade una parada con Cerca de mí, Buscar paradas o Ajustes.</p>'; return; }
   const elapsed = (Date.now()-fetchedAt)/1000;
-  el.innerHTML = last.map(s=>{
-    if (s.error) return `<p class="err">${s.error}</p>`;
-    const rows = s.buses.slice().sort((a,b)=>a.eta-b.eta).map(b=>{
-      const eta = Math.max(0, b.eta - elapsed);
-      const e = fmtEta(eta), [cls,lbl] = status(eta);
-      return `<div class="row" data-key="${b.key}">
-        <div class="badge" style="background:${colorFor(b.line)}">${b.line}</div>
-        <div class="dest"><b>${b.dest}</b><small>${s.crtm ? (b.live ? "En directo (GPS)" : "Según horario") : fmtDist(b.dist) + (b.pos?"":" · sin posición")}</small></div>
-        <div class="eta"><strong>${e.txt}<small style="font-size:13px"> ${e.unit}</small></strong><span class="chip ${cls}">${lbl}</span></div>
+  // favoritas primero, el resto en el orden en que se añadieron
+  const ordered = last.map((s,i)=>({s,i})).sort((a,b)=>((metaOf(b.s).fav?1:0)-(metaOf(a.s).fav?1:0)) || a.i-b.i).map(x=>x.s);
+  el.innerHTML = (isLive() ? heroHtml(ordered, elapsed) : "") + ordered.map(s=>{
+    if (s.error) return `<p class="err">${esc(s.error)}</p>`;
+    const m = metaOf(s);
+    const rows = groupByLine(s.buses, elapsed).map(g=>{
+      const first = g.items[0], e = fmtEta(first.eta);
+      const more = g.items.slice(1,3).map(b=>fmtEta(b.eta).txt + "′").join(" · ");
+      const detail = s.crtm ? (first.live ? "En directo (GPS)" : "Según horario") : (fmtDist(first.dist) || "sin posición");
+      return `<div class="row" data-key="${esc(first.key)}">
+        <div class="badge" style="background:${colorFor(g.line)}">${esc(g.line)}</div>
+        <div class="dest"><b>${esc(g.dest)}</b><small>${detail}${more ? ` · <span class="next">luego ${more}</span>` : ""}</small></div>
+        <div class="eta"><strong>${e.txt}<small style="font-size:13px"> ${e.unit}</small></strong>${chipFor(g, m.walk)}</div>
       </div>`;
     }).join("") || '<p class="empty">No hay autobuses previstos ahora mismo.</p>';
-    return `<div class="stopname">${s.name} · ${s.id}</div>${rows}`;
+    const sub = [m.alias ? esc(s.name) : "", s.crtm ? `Consorcio ${esc(s.id)}` : `EMT ${esc(s.id)}`, m.walk ? `${m.walk} min andando` : ""].filter(Boolean).join(" · ");
+    const editBtn = s.demo ? "" : `<button class="edit" data-edit="${esc(stopKey(s))}" data-name="${esc(s.name)}">Editar</button>`;
+    return `<div class="stophead">${m.fav ? '<span class="star" aria-label="Favorita">★</span>' : ""}<span class="alias">${esc(m.alias || s.name)}</span>${editBtn}</div>
+      <p class="stopsub">${sub}</p>${rows}`;
   }).join("") + (isLive() ? "" : '<p class="empty">Esto es una demo. Pulsa <b>Cerca de mí</b> o <b>Buscar paradas</b> para ver los autobuses reales de tu parada.</p>');
 }
 
@@ -377,6 +481,38 @@ document.getElementById("btnDemo").onclick = ()=>{
   cfg = {...cfg, demo:true}; store.set(cfg); fitted = false; dlg.close(); refresh();
 };
 
+// ---------- Editar una parada: nombre, minutos andando, favorita, quitar ----------
+const stopDlg = document.getElementById("stopDlg");
+let editing = null;
+document.getElementById("list").addEventListener("click", e=>{
+  const b = e.target.closest("[data-edit]"); if (!b) return;
+  e.stopPropagation();
+  editing = b.dataset.edit;
+  const m = cfg.meta[editing] || {};
+  const [net, id] = editing.split(":");
+  document.getElementById("stopDlgTitle").textContent = m.alias || b.dataset.name;
+  document.getElementById("stopDlgSub").textContent = `${b.dataset.name} · ${net === "emt" ? "EMT Madrid" : "Consorcio"} ${id}`;
+  fAlias.value = m.alias || ""; fWalk.value = m.walk || ""; fFav.checked = !!m.fav;
+  stopDlg.showModal();
+});
+document.getElementById("stopForm").addEventListener("submit", ()=>{
+  if (!editing) return;
+  const walk = Math.max(0, Math.min(60, parseInt(fWalk.value,10) || 0));
+  const m = {alias: fAlias.value.trim(), walk, fav: fFav.checked};
+  const meta = {...cfg.meta};
+  if (m.alias || m.walk || m.fav) meta[editing] = m; else delete meta[editing];
+  cfg = {...cfg, meta}; store.set(cfg); renderList();
+});
+document.getElementById("btnRemoveStop").onclick = ()=>{
+  if (!editing) return;
+  const [net, id] = editing.split(":");
+  const field = net === "emt" ? "stops" : "crtm";
+  const list = cfg[field].split(/[,\s]+/).filter(x => x && x !== id && x.padStart(5,"0") !== id);
+  const meta = {...cfg.meta}; delete meta[editing];
+  cfg = {...cfg, [field]: list.join(", "), meta}; store.set(cfg);
+  stopDlg.close(); fitted = false; refresh();
+};
+
 // ---------- Buscar paradas del Consorcio tocando el mapa ----------
 const layerFind = L.layerGroup().addTo(map);
 const btnFind = document.getElementById("btnFind");
@@ -432,6 +568,36 @@ document.getElementById("btnNear").onclick = ()=>{
   }, ()=> showNote("No se pudo obtener tu ubicación. Revisa el permiso de ubicación del navegador."),
   {enableHighAccuracy:true, timeout:10000});
 };
+
+// Al volver a la pestaña o abrir la app instalada, actualizar enseguida
+document.addEventListener("visibilitychange", ()=>{
+  if (document.visibilityState === "visible" && Date.now() - fetchedAt > 15000) refresh();
+});
+
+// ---------- App instalable (PWA) ----------
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", ()=> navigator.serviceWorker.register("sw.js").catch(()=>{}));
+}
+// Android y escritorio: botón Instalar cuando el navegador lo permite
+let installPrompt = null;
+const btnInstall = document.getElementById("btnInstall");
+window.addEventListener("beforeinstallprompt", e=>{ e.preventDefault(); installPrompt = e; btnInstall.hidden = false; });
+btnInstall.onclick = async ()=>{
+  if (!installPrompt) return;
+  installPrompt.prompt(); await installPrompt.userChoice; installPrompt = null; btnInstall.hidden = true;
+};
+window.addEventListener("appinstalled", ()=>{ btnInstall.hidden = true; showNote("Marquesina instalada. Ya la tienes en tu pantalla de inicio."); });
+// iPhone: Safari no tiene botón de instalar; se explica una vez
+const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+const standalone = matchMedia("(display-mode: standalone)").matches || navigator.standalone;
+if (isIOS && !standalone) {
+  try {
+    if (!localStorage.getItem("marquesina-ios-tip")) {
+      localStorage.setItem("marquesina-ios-tip", "1");
+      setTimeout(()=> showNote("Para instalarla: pulsa Compartir y luego «Añadir a pantalla de inicio»."), 3000);
+    }
+  } catch {}
+}
 
 let noteTimer;
 function showNote(msg){
