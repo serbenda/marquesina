@@ -505,13 +505,20 @@ document.getElementById("list").addEventListener("click", e=>{
 });
 
 // ---------- Ciclo de actualización ----------
-let nextAt = 0, refreshing = false;
+let nextAt = 0, refreshing = null, pending = false;
 async function refresh(){
-  // Una sola consulta a la vez: si tarda, no se lanzan más cada segundo
-  if (refreshing) return;
-  refreshing = true;
+  // Una sola consulta a la vez: si llega otra petición mientras tanto (por ejemplo, al añadir una parada),
+  // se hace justo después en lugar de perderse
+  if (refreshing){ pending = true; return refreshing; }
   nextAt = Date.now() + cfg.every*1000;
-  try { await doRefresh(); } finally { refreshing = false; }
+  refreshing = (async () => {
+    try { await doRefresh(); }
+    finally {
+      refreshing = null;
+      if (pending){ pending = false; await refresh(); }
+    }
+  })();
+  return refreshing;
 }
 async function doRefresh(){
   const stops = cfg.stops.split(/[,\s]+/).filter(Boolean);
