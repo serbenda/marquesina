@@ -137,8 +137,45 @@ async function emtArrivalsCached(stop, env, ctx) {
 }
 
 // ---------- Parada del Consorcio completa ----------
-const crtmGet = (path, ttl = CACHE_SECONDS) =>
-  fetch(`${CRTM}/${path}`, { cf: { cacheTtl: ttl } }).then(r => r.json());
+// El Consorcio a veces responde con error (502/500, o una página HTML) cuando le llegan muchas peticiones
+// a la vez. Se reintenta una vez tras una pausa corta.
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+async function crtmFetch(pathAndQuery, ttl = CACHE_SECONDS) {
+  let last;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    if (attempt) await sleep(400);
+    try {
+      const r = await fetch(`${CRTM}/${pathAndQuery}`, { cf: { cacheTtl: ttl } });
+      const text = await r.text();
+      if (r.ok && /^\s*[{[]/.test(text)) return text;
+      last = new Error(`Consorcio ${r.status}`);
+    } catch (e) { last = e; }
+  }
+  throw last;
+}
+const crtmGet = async (path, ttl = CACHE_SECONDS) => JSON.parse(await crtmFetch(path, ttl));
+
+// Pide en paralelo como mucho "n" a la vez (para no saturar al Consorcio)
+async function pool(items, n, fn) {
+  const out = new Array(items.length);
+  let i = 0;
+  await Promise.all(Array.from({ length: Math.min(n, items.length) }, async () => {
+    while (i < items.length) { const k = i++; out[k] = await fn(items[k]); }
+  }));
+  return out;
+}
+
+// Últimos tiempos buenos de cada parada (15 min): si el Consorcio falla, mejor eso que un error
+const lastGoodKey = code => new Request(`https://cache.marquesina/crtm-last/${code}`);
+async function saveLastGood(code, data, ctx) {
+  const cache = globalThis.caches && caches.default;
+  if (!cache) return;
+  const put = cache.put(lastGoodKey(code), new Response(JSON.stringify(data), { headers: { "Content-Type": "application/json", "Cache-Control": "max-age=900" } })).catch(() => {});
+  ctx && ctx.waitUntil ? ctx.waitUntil(put) : await put;
+}
+async function readLastGood(code) {
+  try { const hit = globalThis.caches && await caches.default.match(lastGoodKey(code)); return hit ? hit.json() : null; } catch { return null; }
+}
 
 // Itinerarios de cada línea: no cambian, se guardan en memoria y 1 día en la caché de Cloudflare
 const lineCache = new Map();
@@ -164,17 +201,24 @@ const VEHICLES_WAIT_MS = 2500;
 const lastVehicles = new Map();   // parada -> {at, list}
 
 async function crtmStop(code, ctx) {
-  const [info, times] = await Promise.all([
-    crtmGet(`GetStops.php?codStop=${code}`, 86400).catch(() => ({})),
-    crtmGet(`GetStopsTimes.php?codStop=${code}&type=1&orderBy=2&stopTimesByIti=3`),
-  ]);
+  let info, times;
+  try {
+    [info, times] = await Promise.all([
+      crtmGet(`GetStops.php?codStop=${code}`, 86400).catch(() => ({})),
+      crtmGet(`GetStopsTimes.php?codStop=${code}&type=1&orderBy=2&stopTimesByIti=3`),
+    ]);
+  } catch (e) {
+    const prev = await readLastGood(code);
+    if (prev) return { ...prev, stale: true };   // la web la muestra como datos anteriores
+    throw e;
+  }
   const s = asArray(info.stops && info.stops.Stop)[0] || {};
   // Posición de los buses de cada línea y sentido (solo autobuses: 8 interurbanos, 9 urbanos)
   const lines = new Map();
   for (const t of asArray(times.stopTimes && times.stopTimes.times && times.stopTimes.times.Time))
     if (t.line && ["8", "9"].includes(String(t.line.codMode)) && !lines.has(`${t.line.codLine}|${t.direction}`))
       lines.set(`${t.line.codLine}|${t.direction}`, t);
-  const vehiclesP = Promise.all([...lines.values()].map(async t => {
+  const vehiclesP = pool([...lines.values()], 3, async t => {
     try {
       const its = await crtmItineraries(t.line.codLine);
       const it = its.find(i => i.dir == t.direction && i.stops.has(code)) || its.find(i => i.stops.has(code));
@@ -182,19 +226,21 @@ async function crtmStop(code, ctx) {
       const j = await crtmGet(`GetLineLocation.php?mode=${t.line.codMode}&codItinerary=${encodeURIComponent(it.cod)}&codLine=${encodeURIComponent(t.line.codLine)}&codStop=${code}&direction=${it.dir}`);
       return parseCrtmVehicles(j, { codLine: t.line.codLine, line: t.line.shortDescription, dest: (t.destination || "").replace(/^.*?-\s*/, "") || t.destination });
     } catch { return []; }   // si falla la posición de una línea, siguen valiendo los tiempos
-  })).then(list => { const flat = list.flat(); lastVehicles.set(code, { at: Date.now(), list: flat }); return flat; });
+  }).then(list => { const flat = list.flat(); lastVehicles.set(code, { at: Date.now(), list: flat }); return flat; });
   let vehicles = await Promise.race([vehiclesP, new Promise(r => setTimeout(() => r(null), VEHICLES_WAIT_MS))]);
   if (vehicles === null) {
     if (ctx && ctx.waitUntil) ctx.waitUntil(vehiclesP.catch(() => {}));
     const prev = lastVehicles.get(code);
     vehicles = prev && Date.now() - prev.at < 60000 ? prev.list : [];
   }
-  return {
+  const result = {
     stop: { name: s.name || (times.stopTimes && times.stopTimes.stop && times.stopTimes.stop.name) || "",
             pos: s.coordinates ? [s.coordinates.latitude, s.coordinates.longitude] : null },
     stopTimes: times.stopTimes || null,
     vehicles,
   };
+  if (result.stopTimes) await saveLastGood(code, result, ctx);
+  return result;
 }
 
 // ---------- Avisos: validación de lo que manda la web ----------
@@ -327,8 +373,12 @@ export default {
     if (url.pathname.startsWith("/crtm/")) {
       const file = url.pathname.slice("/crtm/".length);
       if (!/^Get[A-Za-z]+\.php$/.test(file)) return new Response("Not found", { status: 404, headers: cors });
-      const upstream = await fetch(`${CRTM}/${file}${url.search}`, { cf: { cacheTtl: CACHE_SECONDS } });
-      return withCors(upstream, cors);
+      try {
+        const text = await crtmFetch(`${file}${url.search}`);
+        return new Response(text, { headers: { ...cors, "Content-Type": "application/json; charset=utf-8", "Cache-Control": `max-age=${CACHE_SECONDS}` } });
+      } catch {
+        return json({ error: "El Consorcio no responde ahora mismo" }, 502, cors);
+      }
     }
 
     // ---- Paradas de EMT cercanas ----
