@@ -375,7 +375,6 @@ Lo que **no está en el repositorio** y habría que repetir a mano si se perdier
 
 | Qué | Por qué | Prioridad |
 |---|---|---|
-| Revisar la PR de Dependabot que queda (#19, `configure-pages` 5 → 6) | Es un salto de versión mayor; las de `checkout`, `setup-node`, `deploy-pages` y `wrangler-action` ya se fusionaron | Baja |
 | Borrar la rama `diagnostico` | Quedó de las pruebas de la fase 9 | Baja |
 | Elegir una licencia | Sin licencia, nadie puede reutilizar el código legalmente | Baja |
 | Límite de peticiones por usuario en el worker | Protección frente a abusos (ver [SEGURIDAD.md](SEGURIDAD.md)) | Baja |

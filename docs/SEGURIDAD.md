@@ -260,7 +260,7 @@ flowchart LR
 | 3 | Token de Cloudflare con *All zones* | Limitarlo a la zona `bendi.dev` | Bajo | Media |
 | 4 | Sin límite de peticiones por IP | *Rate limiting* de Cloudflare o un contador en el worker | Medio | Media |
 | 5 | Sin cabeceras de seguridad (CSP) en la web | Añadir una política CSP con `<meta http-equiv>` (GitHub Pages no permite cabeceras propias) | Medio | Baja |
-| 6 | PR de Dependabot pendiente (#19, `configure-pages` 5 → 6) | Revisarla y fusionarla si los tests pasan | Bajo | Media |
+| 6 | Actualizaciones de las acciones de GitHub | Revisar cada mes las PR de Dependabot (las primeras, #19–#23, ya están fusionadas) | Bajo | Media |
 | 7 | La clave VAPID no tiene copia | Asumido: perderla solo obliga a reactivar avisos | — | — |
 
 ---

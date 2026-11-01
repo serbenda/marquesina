@@ -356,5 +356,4 @@ Formato sin culpables (*blameless*): qué pasó, por qué y qué se cambió para
 | Medir la latencia en el chequeo | Detectar lentitud, no solo caídas | Bajo |
 | Copia del worker completa fuera de Cloudflare | Quitar el último SPOF | Alto |
 | Exportar periódicamente las suscripciones | Poder recuperar los avisos | Medio |
-| Revisar la PR de Dependabot que queda (#19) | Mantener las acciones al día | Bajo |
 | Verificar la organización de Deno Deploy | Límites ×100 si crece el uso | Bajo |
