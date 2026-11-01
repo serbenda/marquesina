@@ -2,6 +2,8 @@
 
 Por qué el worker tiene una dirección propia, cómo se configuró y qué hacer si algo falla. La arquitectura general está en [ARQUITECTURA.md](ARQUITECTURA.md) y el mantenimiento diario en [MANTENIMIENTO.md](MANTENIMIENTO.md).
 
+> ¿Empiezas de cero? Lee primero la [guía paso a paso con diagramas](GUIA.md).
+
 ## 1. El problema
 
 El 1 de noviembre de 2026 la web dejó de funcionar desde la red de casa: *"No se pudo conectar con el Consorcio"*. El diagnóstico fue el siguiente:

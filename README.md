@@ -105,6 +105,7 @@ marquesina/
 │   └── fixtures/               Respuestas reales de EMT y del Consorcio
 ├── package.json                Solo para "npm test" (sin dependencias)
 ├── docs/
+│   ├── GUIA.md                 Guía para quien empieza de cero, con diagramas
 │   ├── ARQUITECTURA.md         Diseño, fuentes de datos y funcionamiento interno
 │   ├── MANTENIMIENTO.md        Puesta en marcha y mantenimiento paso a paso
 │   └── DOMINIO.md              Dominio propio api.bendi.dev y DNS de bendi.dev
@@ -151,6 +152,7 @@ Los pasos detallados (Cloudflare, secretos, Mobility Labs, comprobaciones) está
 
 | Documento | Para qué |
 |---|---|
+| **[docs/GUIA.md](docs/GUIA.md)** | **Empieza aquí.** Guía para quien no sabe nada: qué es cada pieza, diccionario, diagramas de arquitectura y flujos, montaje desde cero paso a paso, día a día y árbol de problemas |
 | [docs/ARQUITECTURA.md](docs/ARQUITECTURA.md) | Cómo está montado: piezas, APIs, datos guardados, proxy, seguridad |
 | [docs/DOMINIO.md](docs/DOMINIO.md) | Dominio propio `api.bendi.dev`: por qué, DNS de bendi.dev en Cloudflare, pasos, comprobaciones y vuelta atrás |
 | [docs/MANTENIMIENTO.md](docs/MANTENIMIENTO.md) | Cómo ponerlo en marcha y mantenerlo: Mobility Labs, Cloudflare, GitHub Pages, comprobaciones y errores |
