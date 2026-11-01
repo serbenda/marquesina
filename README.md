@@ -40,3 +40,7 @@ Es una web estática: activa GitHub Pages sobre la rama `main` (carpeta raíz).
 
 - Autobuses: API de EMT Madrid (Mobility Labs) y API del Consorcio Regional de Transportes de Madrid.
 - Mapa: © colaboradores de OpenStreetMap.
+
+## Documentación
+
+Arquitectura, fuentes de datos, despliegue y mantenimiento: [docs/ARQUITECTURA.md](docs/ARQUITECTURA.md).
