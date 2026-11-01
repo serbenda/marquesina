@@ -227,7 +227,9 @@ flowchart TB
 | 2 | `https://marquesina.serbenda.workers.dev` | Cloudflare | Si un filtro bloquea el dominio propio |
 | 3 | `https://marquesina.serbenda.deno.net` | Deno Deploy (repetidor) | Si las operadoras bloquean IP de Cloudflare (LaLiga). Ver [RESPALDO.md](RESPALDO.md) |
 
-Al abrir la web, `pickProxy()` prueba en 4 s la dirección que funcionó la última vez (guardada en `localStorage["marquesina-proxy"]`). Si no contesta, prueba las otras dos a la vez y se queda con la más rápida. La primera consulta de paradas espera a esa elección.
+Al abrir la web, `pickProxy()` pide `/push/key` a **los tres caminos a la vez**. Si el primero en contestar es `api.bendi.dev`, se usa ese. Si es otro, se espera 0,5 s más por `api.bendi.dev` y, si no llega, se usa el que contestó. Así, al terminar un bloqueo, la web vuelve sola al camino directo. El camino elegido se guarda en `localStorage["marquesina-proxy"]` (se usa si ninguno contesta al abrir). La primera consulta de paradas espera a esa elección.
+
+⚠️ Las rutas del Consorcio se piden **sin `.php`** (`/crtm/GetNearestStopsByLocation?…`): Deno Deploy rechaza las que acaban en `.php` (ver §6.9).
 
 ### 4.6 Qué pasa cuando una parada falla
 
@@ -633,6 +635,8 @@ flowchart TB
 | Errores del worker (4xx/5xx) | Se copian tal cual | Traen un mensaje útil para la web |
 | Tests | `tests/relay.test.js` (8) | Red simulada: reenvío, alternativa, 502, POST, límites, CORS |
 
+⚠️ **Deno Deploy rechaza con un 404 vacío (sin cabeceras CORS) cualquier ruta que acabe en `.php`**, antes de que llegue a `relay.js`. Por eso la web pide `/crtm/GetNearestStopsByLocation?…` sin `.php`, y el worker acepta las dos formas y siempre añade `.php` al llamar al Consorcio. El chequeo horario hace esta búsqueda de verdad a través del repetidor.
+
 `relay.js` no usa nada propio de Deno (solo `fetch`, `Request`, `Response` y `Headers`), por eso se prueba con Node. `main.js` es lo único específico: `Deno.serve((req) => handle(req))`.
 
 ---
@@ -895,7 +899,7 @@ flowchart TB
 | Cron | cada minuto | `wrangler.toml` | Revisión de avisos |
 | Chequeo | minuto 17 de cada hora | `healthcheck.yml` | Vigilancia |
 | Plan gratuito de Workers | 100.000 peticiones al día | Cloudflare | Límite de uso |
-| `pickProxy` | 4 s por intento | `index.html` | Cuánto se espera al camino guardado al abrir |
+| `pickProxy` | 4 s por camino (los tres a la vez) + 0,5 s de preferencia por `api.bendi.dev` | `index.html` | Elección del camino al abrir |
 | Plazo del repetidor | 9 s | `relay/relay.js` | Tiempo total para llegar al worker |
 | Cuerpo máximo del repetidor | 16 KB | `relay/relay.js` | Tamaño de los POST de avisos |
 
@@ -922,6 +926,7 @@ flowchart TB
 | *No se pudieron guardar los avisos…* | `index.html` | `/push/subscribe` falló | Reintentar; ver los logs del worker |
 | *Se ha alcanzado el máximo de suscripciones* (503) | `worker.js` | 1000 suscripciones | Subir `MAX_SUBSCRIPTIONS` |
 | *El repetidor no pudo llegar al worker (…)* (502) | `relay/relay.js` | El worker no contesta ni en `api.bendi.dev` ni en `workers.dev` | Es un fallo del worker: [MANTENIMIENTO.md](MANTENIMIENTO.md) |
+| *Failed to fetch* solo en la búsqueda de paradas, a través del repetidor | Deno Deploy | Ruta acabada en `.php` | Pedirla sin `.php` |
 | *Petición demasiado grande* (413) | `relay/relay.js` | Cuerpo de más de 16 KB | Revisar qué manda la web |
 
 ---

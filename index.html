@@ -348,11 +348,18 @@ async function getJson(url, ms = 10000){
     } catch { throw e; }
   }
 }
-// Al abrir la web: si la dirección guardada no contesta enseguida, se elige la más rápida de las tres
+// Al abrir la web se prueban los tres caminos A LA VEZ (3 peticiones pequeñas, sin esperas en serie).
+// Se prefiere el principal (api.bendi.dev): si otro contesta antes, se le dan 0,5 s más al principal.
+// Así, cuando termina un bloqueo, la web vuelve sola al camino directo.
 async function pickProxy(){
   const ping = p => getJsonOnce(`${p}/push/key`, 4000).then(j => { if (!j.publicKey) throw new Error(); return p; });
-  try { await ping(PROXY); return; } catch {}
-  try { useProxy(await Promise.any(PROXIES.filter(p => p !== PROXY).map(ping))); } catch {}
+  const pings = PROXIES.map(ping);
+  try {
+    const first = await Promise.any(pings);
+    if (first === PROXIES[0]) { useProxy(first); return; }
+    const primary = await Promise.race([pings[0].catch(() => null), new Promise(r => setTimeout(() => r(null), 500))]);
+    useProxy(primary || first);
+  } catch {}   // ninguno contesta: se queda el guardado y getJson() lo intentará en cada petición
 }
 const proxyReady = pickProxy();
 
@@ -366,6 +373,7 @@ async function arrivals(stop){
 // ---------- API del Consorcio (CRTM): interurbanos y urbanos de Alcobendas, Sanse, etc. ----------
 // Da tiempos de llegada por parada (GetStopsTimes) y, aparte, la posición GPS de los buses (GetLineLocation).
 // No admite llamadas directas desde otras webs (CORS), así que pasa por el proxy (worker.js).
+// Sin ".php" al final: el repetidor de Deno Deploy rechaza esas rutas (el worker añade ".php" él solo)
 const crtmUrl = (path) => `${PROXY}/crtm/${path}`;
 // Una sola petición por parada: el worker junta datos de la parada, tiempos y posición de los buses
 async function crtmArrivals(raw){
@@ -383,7 +391,7 @@ async function crtmArrivals(raw){
 async function crtmNearest(lat, lng, radius = 350){
   const base = PROXY;
   const [crtm, emt] = await Promise.allSettled([
-    getJson(crtmUrl(`GetNearestStopsByLocation.php?latitude=${lat.toFixed(5)}&longitude=${lng.toFixed(5)}&mode=&method=1&precision=${Math.round(radius)}`)).then(parseNearest),
+    getJson(crtmUrl(`GetNearestStopsByLocation?latitude=${lat.toFixed(5)}&longitude=${lng.toFixed(5)}&mode=&method=1&precision=${Math.round(radius)}`)).then(parseNearest),
     getJson(`${base}/emt/near/${lat.toFixed(5)}/${lng.toFixed(5)}/${Math.round(radius)}`).then(parseEmtNear),
   ]);
   if (crtm.status === "rejected" && emt.status === "rejected") throw new Error("Sin datos de paradas");

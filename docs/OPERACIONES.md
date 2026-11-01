@@ -104,7 +104,7 @@ Análisis de modos de fallo (*FMEA*, simplificado):
 | Worker | Ninguna parada carga; no hay avisos | **Crítica** | Ninguna (SPOF) | Chequeo: Consorcio, EMT y avisos |
 | Durable Object | No se pueden activar avisos ni llegan | Media | — | Chequeo: *Avisos (clave VAPID)* |
 | `api.bendi.dev` (DNS o certificado) | Nada, si funciona otro camino | Baja | `workers.dev` y repetidor | Chequeo de cada camino |
-| IP de Cloudflare bloqueadas (fútbol) | Nada, si funciona el repetidor (~4 s más la primera vez) | Baja | Repetidor + elección en paralelo | Solo desde la red afectada |
+| IP de Cloudflare bloqueadas (fútbol) | Nada, si funciona el repetidor (~0,5 s más al abrir) | Baja | Repetidor + elección en paralelo | Solo desde la red afectada |
 | Repetidor | Nada, salvo durante un bloqueo | Baja | Los otros dos caminos | Chequeo: *Repetidor de respaldo* |
 | EMT | Paradas de EMT con error | Media | Caché de 10 s; respaldo de autenticación | Chequeo: *EMT a través del worker* |
 | Consorcio | Paradas del Consorcio con datos antiguos | Media | Reintento + últimos datos buenos 15 min | Chequeo: *Consorcio a través del worker* |
@@ -124,7 +124,7 @@ Objetivos **propuestos** para un proyecto personal gratuito. Sirven para decidir
 | Disponibilidad del worker | Chequeo horario: `/push/key`, `/crtm/…`, `/emt/…` en verde | 99 % de las horas | ~7 horas |
 | Disponibilidad de la web | Chequeo horario: *Web publicada* | 99,5 % | ~3,5 horas |
 | Frescura de los datos | Edad de los datos mostrados | < 30 s el 95 % del tiempo; nunca más de 15 min sin avisar | — |
-| Primera carga | Desde que se abre hasta ver minutos | < 3 s normal; < 8 s con bloqueo | — |
+| Primera carga | Desde que se abre hasta ver minutos | < 3 s normal; < 5 s con bloqueo | — |
 | Avisos | Llegan en el minuto en que tocan | 95 % | — |
 
 **Cómo se usa:** si el chequeo falla más de 7 horas en un mes, se para todo lo nuevo y se dedica el tiempo a fiabilidad. Si no, se pueden hacer cambios con tranquilidad.
@@ -162,6 +162,7 @@ flowchart LR
 | Avisos | `api.bendi.dev/push/key` | `"publicKey"` |
 | Dirección alternativa | `marquesina.serbenda.workers.dev/push/key` | `"publicKey"` |
 | Repetidor de respaldo | `marquesina.serbenda.deno.net/push/key` | `"publicKey"` |
+| Búsqueda de paradas a través del repetidor | `marquesina.serbenda.deno.net/crtm/GetNearestStopsByLocation?…` | `"stops"` |
 
 **Puntos ciegos conocidos:**
 - El chequeo se ejecuta **desde EE. UU.** (GitHub). No ve los bloqueos de redes españolas. Para eso solo sirve probar desde la red afectada.
@@ -347,6 +348,15 @@ Formato sin culpables (*blameless*): qué pasó, por qué y qué se cambió para
 - **Prevención:** chequeo del repetidor; runbook R5; ver mejoras en §12.
 
 ---
+
+### INC-6 · Con el repetidor, la búsqueda de paradas no traía casi nada (1 nov, 20:22)
+- **Impacto:** durante el bloqueo, *Zona*, *Buscar paradas* y *Cerca de mí* solo mostraban paradas de EMT; en Alcobendas y Sanse, ninguna. Los tiempos de las paradas guardadas sí funcionaban.
+- **Detección:** aviso del usuario (*"pulso Alcobendas o Sanse y saca casi nada"*).
+- **Causa raíz:** Deno Deploy rechaza con un 404 vacío, y sin cabeceras CORS, toda ruta que acabe en `.php`. La búsqueda del Consorcio era `/crtm/GetNearestStopsByLocation.php`. El navegador lo veía como *Failed to fetch* y la web se quedaba solo con lo de EMT.
+- **Por qué no se vio antes:** los tests del repetidor simulan la red y el chequeo solo probaba `/push/key` por Deno. La prueba real con el bloqueo se hizo con una parada guardada (`/crtm/stop/…`, sin `.php`), no con una búsqueda.
+- **Arreglo:** la web pide las rutas del Consorcio sin `.php` y el worker acepta las dos formas.
+- **Prevención:** test en `worker.test.js` y nuevo paso del chequeo horario que hace la búsqueda real a través de Deno.
+- **Lección:** probar **cada tipo de ruta** a través de cada camino, no solo una. Un proveedor nuevo puede tener reglas propias.
 
 ## 12. Mejoras de fiabilidad pendientes
 

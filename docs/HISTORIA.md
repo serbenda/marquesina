@@ -308,6 +308,8 @@ flowchart LR
   R -- "✅" --> A
 ```
 
+**Incidente posterior (20:22):** con el bloqueo, *Zona* y *Buscar paradas* casi no traían nada. Deno Deploy rechaza las rutas que acaban en `.php`, y la búsqueda del Consorcio era una de ellas. Se cambió la web para pedirla sin `.php` y se añadió un chequeo real por Deno ([OPERACIONES.md](OPERACIONES.md), INC-6).
+
 **Lo que enseña:**
 - **Diagnosticar por capas** (nombre → DNS → IP → conexión). La primera causa encontrada (fase 9) era real, pero no era toda la historia.
 - **Un solo proveedor es un punto único de fallo**, aunque tenga varios nombres. La redundancia de verdad está en otra red.
@@ -335,7 +337,7 @@ Cada decisión importante, con su motivo (formato *ADR*, *Architecture Decision 
 | 12 | Degradación elegante (últimos datos, +20, límites de tiempo) | Mostrar error | Mejor información algo vieja que pantalla vacía | 8 |
 | 13 | Dominio propio `api.bendi.dev` | Solo `workers.dev` | Esquivar filtros por nombre; dirección estable propia | 9 |
 | 14 | Repetidor sin estado en Deno Deploy | VPN, IP propia (Enterprise), worker duplicado | Sin secretos ni datos duplicados; gratis; probado | 11 |
-| 15 | Elección de camino en paralelo y recordada | Probar uno tras otro | Un bloqueo cuesta 4 s una vez, no 10 s por camino | 11 |
+| 15 | Elección de camino en paralelo, prefiriendo el directo | Probar uno tras otro; quedarse siempre con el último que funcionó | Un bloqueo cuesta ~0,5 s, no 10 s por camino, y al terminar se vuelve solo al directo | 11 |
 
 ---
 

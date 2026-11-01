@@ -203,7 +203,7 @@ El Consorcio responde a veces con error (502/500, o una página HTML en lugar de
 ```mermaid
 flowchart TB
   subgraph Navegador
-    PK["pickProxy()<br/>al abrir: el guardado en 4 s;<br/>si no, los otros a la vez"]
+    PK["pickProxy()<br/>al abrir: los tres a la vez,<br/>prefiere api.bendi.dev"]
     GJ["getJson()<br/>si una petición falla por red,<br/>los otros a la vez"]
     LS[("localStorage<br/>marquesina-proxy")]
     PK <--> LS
@@ -240,7 +240,8 @@ flowchart TB
 | **Repetidor sin estado (elegida)** | Sin secretos, sin datos, ~100 líneas, gratis y con tests; el worker sigue siendo la única fuente de verdad |
 
 **Consecuencias.**
-- Durante un bloqueo, la primera carga tarda unos 4 s más; después se recuerda el camino.
+- Durante un bloqueo, arrancar cuesta ~0,5 s más; al terminar, la web vuelve sola a `api.bendi.dev`.
+- Deno Deploy rechaza las rutas que acaban en `.php`: la web pide las del Consorcio sin `.php` y el worker lo añade.
 - El repetidor añade un salto de red (decenas de milisegundos), solo cuando se usa.
 - El repetidor ve las mismas peticiones que el worker; no guarda nada (ver [SECURITY.md](../SECURITY.md)).
 - Si Cloudflare cayera por completo, el repetidor no ayudaría: no hay copia del worker fuera.

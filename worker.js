@@ -19,7 +19,8 @@
  *   GET  /crtm/stop/<parada>             Todo de una parada del Consorcio en una respuesta: nombre y
  *                                        posición (GetStops), llegadas (GetStopsTimes) y posición GPS de
  *                                        los buses (GetLinesInformation + GetLineLocation).
- *   GET  /crtm/<Get*.php>?...            Proxy directo a la API del Consorcio (www.crtm.es/widgets/api).
+ *   GET  /crtm/<Get*>?...                Proxy directo a la API del Consorcio (www.crtm.es/widgets/api).
+ *                                        Con o sin ".php" (la web lo pide sin: Deno Deploy rechaza ".php").
  *   GET  /emt/near/<lat>/<lon>/<radio>   Paradas de EMT cercanas (incluye las que el Consorcio no tiene,
  *                                        como las de El Pardo).
  *   GET  /emt/arrives/<parada>           Llegadas de EMT con posición GPS. El worker inicia sesión.
@@ -444,11 +445,13 @@ export default {
     }
 
     // ---- Consorcio ----
+    // Se acepta con y sin ".php" (/crtm/GetStops o /crtm/GetStops.php). La web lo pide SIN ".php" porque
+    // Deno Deploy (el repetidor de respaldo) rechaza con un 404 vacío cualquier ruta que acabe en ".php".
     if (url.pathname.startsWith("/crtm/")) {
-      const file = url.pathname.slice("/crtm/".length);
-      if (!/^Get[A-Za-z]+\.php$/.test(file)) return new Response("Not found", { status: 404, headers: cors });
+      const fm = url.pathname.slice("/crtm/".length).match(/^(Get[A-Za-z]+)(\.php)?$/);
+      if (!fm) return new Response("Not found", { status: 404, headers: cors });
       try {
-        const text = await crtmFetch(`${file}${url.search}`);
+        const text = await crtmFetch(`${fm[1]}.php${url.search}`);
         return new Response(text, { headers: { ...cors, "Content-Type": "application/json; charset=utf-8", "Cache-Control": `max-age=${CACHE_SECONDS}` } });
       } catch {
         return json({ error: "El Consorcio no responde ahora mismo" }, 502, cors);

@@ -294,17 +294,17 @@ sequenceDiagram
   participant A as api.bendi.dev
   participant B as workers.dev
   participant R as Repetidor (Deno)
-  W->>M: ¿Qué camino funcionó la última vez?
-  M-->>W: api.bendi.dev
-  W->>A: ¿Estás? (máximo 4 s)
-  Note over A: ❌ Bloqueado: no contesta
-  par Prueba los otros dos a la vez
+  par Pregunta a los tres a la vez
+    W->>A: ¿Estás?
+    Note over A: ❌ Bloqueado: no contesta
+  and
     W->>B: ¿Estás?
     Note over B: ❌ También bloqueado
   and
     W->>R: ¿Estás?
     R-->>W: ✅ Sí
   end
+  Note over W: Espera 0,5 s por si contesta api.bendi.dev
   W->>M: Apunta: el repetidor
   W->>R: Pide las paradas
   R->>A: Las pide al worker (sin bloqueo)
@@ -312,8 +312,8 @@ sequenceDiagram
   R-->>W: Datos → "En vivo"
 ```
 
-- La primera vez, durante un bloqueo, tarda **unos 4 segundos** más en arrancar. Las siguientes, nada, porque recuerda el camino.
-- Cuando el bloqueo termina, el camino guardado sigue funcionando (el repetidor siempre llega), así que no hay que hacer nada.
+- Durante un bloqueo, arrancar cuesta **medio segundo más**, nada más.
+- Cuando el bloqueo termina, la próxima vez que se abre vuelve sola a `api.bendi.dev`, el camino directo.
 - Si en mitad del uso un camino deja de contestar, la web prueba los otros a la vez y cambia sola.
 
 ### 5.8 La historia: por qué hay tres caminos
@@ -778,7 +778,7 @@ flowchart TB
 | La web sigue igual después de un cambio | El navegador guarda la versión anterior | **Ctrl/Cmd + Shift + R** o añadir `?v=N` |
 | *"No se pudo conectar…"* solo en casa, en día de partido | Bloqueo de LaLiga a IP de Cloudflare | La web usa sola el repetidor. Si tampoco va, comprueba https://marquesina.serbenda.deno.net/push/key ([RESPALDO.md](RESPALDO.md)) |
 | *"No se pudo conectar…"* solo en casa, sin partido | Tu red bloquea `workers.dev` u otra cosa | Revisa tu filtro de red (Pi-hole, AdGuard, router) |
-| La web tarda unos segundos más en arrancar | Está probando caminos porque el guardado no contesta | Normal durante un bloqueo; la siguiente vez arranca rápido |
+| La web tarda medio segundo más en arrancar | Está eligiendo camino porque `api.bendi.dev` no contesta | Normal durante un bloqueo |
 | Email *"Chequeo de marquesina failed"* en el paso **Repetidor de respaldo** | El repetidor de Deno no responde | Deno → app marquesina → **Builds** y **Logs**; relanzar el último build |
 | No puedo entrar en console.deno.com (*Verification failed*) | Su anti-robots está en Cloudflare y hay bloqueo | Esperar al final del partido o usar una VPN |
 | *"Sin datos nuevos · son de hace 3 min"* | El Consorcio no respondió en ese momento | Nada: se actualiza solo en la siguiente vuelta |
