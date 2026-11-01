@@ -15,7 +15,7 @@ Funciona con los autobuses urbanos de **EMT Madrid** y con los del **Consorcio d
 - **Saber cuándo salir de casa.** Indica cuántos minutos tardas andando a cada parada y marquesina te dice *"Sal en 4 min"*, *"¡Sal ya!"* o *"No llegas"*, y a qué bus te da tiempo. Arriba del todo aparece siempre lo más urgente.
 - **Ver tus paradas en vivo.** Una fila por línea con el próximo bus y los siguientes (*"luego 14′ · 26′"*). Se actualiza sola cada 30 s, 1 min o 2 min, y al volver a abrir la app.
 - **Ponerles nombre.** "Casa", "Cole", "Trabajo"… y marcar tus favoritas para que salgan siempre arriba.
-- **Seguir los buses en el mapa.** Los de EMT aparecen con su posición GPS y dejan un rastro para ver por dónde vienen. Si tocas una llegada en la lista, el mapa se centra en ese bus.
+- **Seguir los buses en el mapa.** Los de EMT y los del Consorcio (interurbanos, Alcobendas, Sanse…) aparecen con su posición GPS real en un recuadro del color de su línea y dejan un rastro para ver por dónde vienen. Si tocas una llegada en la lista, el mapa se centra en ese bus.
 - **Saber si el dato es fiable.** En el Consorcio, cada tiempo indica si es *En directo (GPS)* o *Según horario*.
 - **Encontrar paradas sin saber el código:**
   - **Cerca de mí**: usa tu ubicación y carga las 3 paradas más cercanas.
@@ -49,8 +49,8 @@ En **Ajustes** también puedes escribir los códigos a mano:
 | | EMT Madrid | Consorcio |
 |---|---|---|
 | Tiempos de llegada | ✅ | ✅ |
-| Posición del bus en el mapa | ✅ | ❌ (las llegadas se muestran junto a la parada) |
-| Distancia hasta la parada | ✅ | ❌ |
+| Posición GPS del bus en el mapa | ✅ | ✅ |
+| Distancia hasta la parada en la lista | ✅ | ❌ |
 | Indica si el dato es GPS u horario | Siempre GPS | ✅ |
 
 ## Cómo funciona
@@ -128,7 +128,7 @@ Los pasos detallados (Cloudflare, secretos, Mobility Labs, comprobaciones) está
 ## Limitaciones conocidas
 
 - La API del Consorcio no es pública ni está documentada oficialmente: puede cambiar sin aviso.
-- El Consorcio no publica la posición de los autobuses, solo los tiempos de llegada.
+- En el Consorcio, los tiempos de llegada y las posiciones vienen por separado: al tocar una llegada, el mapa se centra en el bus de esa línea más cercano a la parada, que suele ser el que llega pero no siempre.
 - La etiqueta *En directo / Según horario* se deduce del formato de los datos. No es una indicación oficial.
 - **Cerca de mí** necesita permiso de ubicación del navegador.
 - Los minutos andando los indicas tú: marquesina no calcula rutas.
