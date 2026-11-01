@@ -132,6 +132,8 @@ flowchart LR
 | **Worker** | Intermediario con EMT y el Consorcio, cachés, avisos y cron | `worker.js`, `wrangler.toml` |
 | **Avisos** | Firma y cifra cada notificación, sin librerías | `push.js` |
 
+**Tres caminos al mismo worker:** `api.bendi.dev`, `marquesina.serbenda.workers.dev` y un repetidor fuera de Cloudflare (Deno Deploy). Durante los partidos de LaLiga varias operadoras bloquean IP de Cloudflare; la web prueba los tres a la vez y se queda con el que conteste ([docs/RESPALDO.md](docs/RESPALDO.md)).
+
 ¿Por qué un intermediario? El Consorcio **no permite** que otras webs le pidan datos desde el navegador, y EMT pide **usuario y contraseña**, que no pueden estar en la web. El worker resuelve las dos cosas y, de paso, junta peticiones y guarda respuestas unos segundos para ir más rápido.
 
 **Privacidad:** tus paradas se guardan solo en tu navegador. En Cloudflare se guardan únicamente los avisos que actives (parada, horario y la dirección de entrega de notificaciones), sin nombre, correo ni ubicación. Detalle en [SECURITY.md](SECURITY.md).
@@ -151,6 +153,7 @@ marquesina/
 ├── manifest.webmanifest     📲 Nombre, iconos y colores de la app
 ├── worker.js                ⚙️ Worker de Cloudflare: proxy, cachés, avisos y cron
 ├── wrangler.toml            ⚙️ Configuración del worker (dominio, Durable Object, cron)
+├── relay/                   🛟 Repetidor de respaldo en Deno Deploy (bloqueos de LaLiga)
 ├── assets/                  🖼️ Iconos
 ├── tests/                   🧪 Tests con respuestas reales (fixtures/)
 ├── docs/                    📚 Documentación (ver abajo)
@@ -201,7 +204,7 @@ flowchart LR
 | **Tests** | Cada PR y cada push | Sintaxis y `npm test` |
 | **Publicar en GitHub Pages** | Al fusionar en `main` | Publica la web |
 | **Desplegar worker en Cloudflare** | Al fusionar cambios del worker en `main` | Lo publica y comprueba que responde |
-| **Chequeo de marquesina** | Cada hora | Comprueba web, Consorcio, EMT y avisos; si falla, llega un email |
+| **Chequeo de marquesina** | Cada hora | Comprueba web, Consorcio, EMT, avisos y las tres direcciones; si falla, llega un email |
 
 Antes de abrir una PR, lee [CONTRIBUTING.md](CONTRIBUTING.md). Lo más importante:
 
@@ -224,6 +227,7 @@ Antes de abrir una PR, lee [CONTRIBUTING.md](CONTRIBUTING.md). Lo más important
 | [docs/ARQUITECTURA.md](docs/ARQUITECTURA.md) | Quien quiere entender las decisiones | Piezas, fuentes de datos, por qué así, seguridad |
 | [docs/MANTENIMIENTO.md](docs/MANTENIMIENTO.md) | Quien mantiene el servicio | Mobility Labs, Cloudflare, GitHub, comprobaciones y errores |
 | [docs/DOMINIO.md](docs/DOMINIO.md) | Quien toca el DNS | `api.bendi.dev`: por qué, pasos, estado y vuelta atrás |
+| [docs/RESPALDO.md](docs/RESPALDO.md) | Quien mantiene el servicio | Repetidor fuera de Cloudflare para los bloqueos de LaLiga |
 | [CONTRIBUTING.md](CONTRIBUTING.md) · [AGENTS.md](AGENTS.md) | Quien va a hacer cambios (personas o IA) | Normas, lista de comprobación y cosas que confunden |
 | [SECURITY.md](SECURITY.md) · [CHANGELOG.md](CHANGELOG.md) | Todos | Datos y secretos · historial |
 
@@ -242,7 +246,7 @@ No. Usa los planes gratuitos de GitHub y Cloudflare. Lo único que se paga es la
 <details>
 <summary><b>Pone "No se pudo conectar…" en mi casa pero con datos móviles funciona</b></summary>
 
-Tu red (router, Pi-hole, AdGuard, antivirus…) bloquea algo. marquesina prueba sola dos direcciones: `api.bendi.dev` y `marquesina.serbenda.workers.dev`. Ver [docs/DOMINIO.md](docs/DOMINIO.md).
+Lo más habitual es el **bloqueo de LaLiga**: durante los partidos, Movistar, MasOrange, Vodafone y DIGI cortan IP de Cloudflare. marquesina prueba sola tres caminos, uno de ellos fuera de Cloudflare ([docs/RESPALDO.md](docs/RESPALDO.md)). Otra causa posible es un filtro de tu red (Pi-hole, AdGuard, router…) que bloquee `*.workers.dev` ([docs/DOMINIO.md](docs/DOMINIO.md)).
 </details>
 
 <details>

@@ -198,7 +198,7 @@ stateDiagram-v2
 
 Si solo fallan algunas paradas, la etiqueta sigue en **En vivo** y el aviso aparece en la tarjeta de esa parada.
 
-### 4.5 Las dos direcciones del worker (`getJson`)
+### 4.5 Las tres direcciones del worker (`pickProxy` y `getJson`)
 
 ```mermaid
 flowchart TB
@@ -206,12 +206,20 @@ flowchart TB
   B -- "OK" --> Z["✅ devuelve el JSON"]
   B -- "Error" --> C{"¿Es de red o de tiempo<br/>(TypeError)?"}
   C -- "No (p. ej. JSON roto)" --> X["❌ lanza el error"]
-  C -- "Sí" --> D["Prueba la misma ruta<br/>en la otra dirección de PROXIES"]
-  D -- "OK" --> E["PROXY = la otra<br/>(las siguientes peticiones<br/>van directas a ella)"] --> Z
-  D -- "Error" --> X
+  C -- "Sí" --> D["Prueba la misma ruta en las<br/>OTRAS direcciones a la vez"]
+  D -- "La primera que conteste" --> E["PROXY = esa<br/>(y se guarda en localStorage)"] --> Z
+  D -- "Ninguna" --> X
 ```
 
-`PROXIES = ["https://api.bendi.dev", "https://marquesina.serbenda.workers.dev"]`. La dirección que funcione se queda como `PROXY` mientras la página esté abierta.
+`PROXIES` tiene tres caminos al mismo worker:
+
+| # | Dirección | Dónde | Para qué |
+|---|---|---|---|
+| 1 | `https://api.bendi.dev` | Cloudflare (dominio propio) | La principal |
+| 2 | `https://marquesina.serbenda.workers.dev` | Cloudflare | Si un filtro bloquea el dominio propio |
+| 3 | `https://marquesina.serbenda.deno.net` | Deno Deploy (repetidor) | Si las operadoras bloquean IP de Cloudflare (LaLiga). Ver [RESPALDO.md](RESPALDO.md) |
+
+Al abrir la web, `pickProxy()` prueba en 4 s la dirección que funcionó la última vez (guardada en `localStorage["marquesina-proxy"]`). Si no contesta, prueba las otras dos a la vez y se queda con la más rápida. La primera consulta de paradas espera a esa elección.
 
 ### 4.6 Qué pasa cuando una parada falla
 
@@ -262,6 +270,7 @@ classDiagram
 | `marquesina` | Todos los ajustes (el objeto de arriba) |
 | `marquesina-intro` | `"1"` cuando ya se vio la bienvenida |
 | `marquesina-ios-tip` | `"1"` cuando ya se enseñó en iPhone cómo instalar la app |
+| `marquesina-proxy` | La última dirección del worker que funcionó |
 
 Ejemplo real de `localStorage["marquesina"]`:
 

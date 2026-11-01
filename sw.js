@@ -12,10 +12,10 @@
 // Resumen de estrategias:
 // - La página (index.html) va "primero red": siempre la última versión si hay conexión, la guardada si no.
 // - Librerías, fuentes e iconos van "primero caché": no cambian.
-// - Los datos de autobuses (worker de Cloudflare) y las teselas del mapa NO se guardan: tienen que ser en vivo.
+// - Los datos de autobuses (worker de Cloudflare y repetidor de Deno) y las teselas del mapa NO se guardan: tienen que ser en vivo.
 // - Recibe los avisos programados (Web Push) y los muestra como notificación.
 
-const VERSION = "marquesina-v3";   // cambiarlo obliga a renovar la caché en todos los dispositivos
+const VERSION = "marquesina-v4";   // cambiarlo obliga a renovar la caché en todos los dispositivos
 const SHELL = [
   "./",
   "./manifest.webmanifest",
@@ -45,7 +45,7 @@ self.addEventListener("fetch", e => {
   const url = new URL(req.url);
 
   // Datos en vivo y mapa: siempre de la red
-  if (url.hostname.endsWith("workers.dev") || url.hostname === "api.bendi.dev" || url.hostname.endsWith("tile.openstreetmap.org")) return;
+  if (url.hostname.endsWith("workers.dev") || url.hostname === "api.bendi.dev" || url.hostname.endsWith(".deno.net") || url.hostname.endsWith("tile.openstreetmap.org")) return;
 
   // La página: primero red, si falla la guardada
   if (req.mode === "navigate") {

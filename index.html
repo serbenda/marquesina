@@ -268,11 +268,16 @@ import { unb64url } from "./push.js";
 // =====================================================================================================
 
 // ---------- Configuración ----------
-// Worker de marquesina en Cloudflare (proxy de EMT y del Consorcio, y avisos). Fijo: no se configura.
-// Dos direcciones del mismo worker: la propia (api.bendi.dev) y la de Cloudflare (*.workers.dev), que
-// algunas redes bloquean (Pi-hole, AdGuard, routers, empresas). Si una no responde, se usa la otra.
-const PROXIES = ["https://api.bendi.dev", "https://marquesina.serbenda.workers.dev"];
-let PROXY = PROXIES[0];
+// Worker de marquesina (proxy de EMT y del Consorcio, y avisos). Fijo: no se configura.
+// Tres caminos para llegar al mismo worker, por si alguno está bloqueado en la red de quien usa la web:
+//   1. api.bendi.dev                    dominio propio en Cloudflare
+//   2. marquesina.serbenda.workers.dev  dirección de Cloudflare (algunos filtros bloquean *.workers.dev)
+//   3. repetidor en Deno Deploy         fuera de Cloudflare: sirve durante los bloqueos de LaLiga,
+//                                       que cortan IP de Cloudflare (relay/relay.js, docs/RESPALDO.md)
+const PROXIES = ["https://api.bendi.dev", "https://marquesina.serbenda.workers.dev", "https://marquesina.serbenda.deno.net"];
+// La última dirección que funcionó se recuerda para empezar por ella la próxima vez
+let PROXY = (() => { try { const p = localStorage.getItem("marquesina-proxy"); return PROXIES.includes(p) ? p : PROXIES[0]; } catch { return PROXIES[0]; } })();
+const useProxy = p => { if (p === PROXY) return; PROXY = p; try { localStorage.setItem("marquesina-proxy", p); } catch {} };
 // Paradas de ejemplo en Alcobendas (Marqués de la Valdavia) para que la web arranque en vivo
 // meta: datos propios de cada parada -> {"emt:69": {alias:"Casa", walk:5, fav:true}, "crtm:06756": {...}}
 // alerts: avisos programados por parada -> {"crtm:06756": {on, days:[1..7], from:"07:30", to:"09:00", line:"", lead:3}}
@@ -328,18 +333,27 @@ async function getJsonOnce(url, ms){
   catch (e) { throw e.name === "AbortError" ? new TypeError("Tiempo de espera agotado") : e; }
   finally { clearTimeout(t); }
 }
-// Si la dirección del worker no responde (red que la bloquea, DNS…), se prueba la otra y se queda la que funcione
+// Si la dirección del worker no responde (red que la bloquea, DNS…), se prueban las demás A LA VEZ
+// y se queda la primera que conteste. Así un bloqueo cuesta un intento, no uno por dirección.
 async function getJson(url, ms = 10000){
   try { return await getJsonOnce(url, ms); }
   catch (e) {
     const base = PROXIES.find(p => url.startsWith(p));
     if (!(e instanceof TypeError) || !base) throw e;
-    for (const other of PROXIES.filter(p => p !== base)){
-      try { const j = await getJsonOnce(other + url.slice(base.length), ms); PROXY = other; return j; } catch {}
-    }
-    throw e;
+    const path = url.slice(base.length);
+    try {
+      return await Promise.any(PROXIES.filter(p => p !== base).map(other =>
+        getJsonOnce(other + path, ms).then(j => { useProxy(other); return j; })));
+    } catch { throw e; }
   }
 }
+// Al abrir la web: si la dirección guardada no contesta enseguida, se elige la más rápida de las tres
+async function pickProxy(){
+  const ping = p => getJsonOnce(`${p}/push/key`, 4000).then(j => { if (!j.publicKey) throw new Error(); return p; });
+  try { await ping(PROXY); return; } catch {}
+  try { useProxy(await Promise.any(PROXIES.filter(p => p !== PROXY).map(ping))); } catch {}
+}
+const proxyReady = pickProxy();
 
 // ---------- API EMT ----------
 // El worker de marquesina inicia sesión en EMT con las claves de la aplicación
@@ -505,7 +519,7 @@ async function refresh(){
   if (refreshing){ pending = true; return refreshing; }
   nextAt = Date.now() + cfg.every*1000;
   refreshing = (async () => {
-    try { await doRefresh(); }
+    try { await proxyReady; await doRefresh(); }
     finally {
       refreshing = null;
       if (pending){ pending = false; await refresh(); }

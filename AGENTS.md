@@ -16,9 +16,10 @@ Web estática (GitHub Pages) que muestra en tiempo real los autobuses de la Comu
 | `sw.js` | Service worker: caché de la app y notificaciones |
 | `worker.js` | Cloudflare Worker: rutas `/crtm/…`, `/emt/…`, `/push/…`, Durable Object `PushHub` y cron |
 | `wrangler.toml` | Configuración del worker (dominio, Durable Object, cron) |
+| `relay/` | Repetidor de respaldo en Deno Deploy: reenvía al worker cuando Cloudflare está bloqueado |
 | `tests/` | `node:test` con respuestas reales en `tests/fixtures/` |
 | `.github/workflows/` | `tests.yml`, `pages.yml`, `worker.yml`, `healthcheck.yml` |
-| `docs/` | GUIA (para quien empieza), REFERENCIA (por dentro), ARQUITECTURA (porqués), MANTENIMIENTO (tareas), DOMINIO (DNS) |
+| `docs/` | GUIA (para quien empieza), REFERENCIA (por dentro), ARQUITECTURA (porqués), MANTENIMIENTO (tareas), DOMINIO (DNS), RESPALDO (repetidor) |
 
 ## Reglas que no se pueden saltar
 
@@ -47,4 +48,5 @@ En local, la web usa el worker publicado (`api.bendi.dev` o `workers.dev`); el w
 - El Consorcio manda un objeto cuando hay un solo elemento y una lista cuando hay varios: usa `asArray()`.
 - Los códigos del Consorcio llevan prefijo de red: `8_` interurbano, `9_` urbano, `4_` Metro, `5_` Cercanías, `10_` Metro Ligero, `6_` EMT. Lo que se escribe sin prefijo es `8_` (`crtmCode`).
 - `api.bendi.dev` solo funciona con el DNS de `bendi.dev` en Cloudflare ([docs/DOMINIO.md](docs/DOMINIO.md)).
+- Durante los partidos de LaLiga, varias operadoras bloquean IP de Cloudflare: por eso existe `relay/` y la web prueba tres direcciones (`PROXIES`). Ver [docs/RESPALDO.md](docs/RESPALDO.md).
 - Los avisos se calculan en hora de Madrid aunque el worker funcione en UTC (`alertActive`).
