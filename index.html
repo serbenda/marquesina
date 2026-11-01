@@ -243,7 +243,7 @@ input,select{font:15px var(--body);color:var(--fg);background:var(--bg);border:1
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script type="module">
 import { asArray, esc, crtmCode, fmtEta, status, fmtDist, fmtAge, parseEmt, parseCrtmTimes, parseCrtmVehicles,
-         groupByLine, leaveInfo, bestLeave, parseNearest, stopNetwork } from "./logic.js";
+         groupByLine, leaveInfo, bestLeave, parseNearest, parseEmtNear, mergeStops, stopNetwork } from "./logic.js";
 import { unb64url } from "./push.js";
 
 // ---------- Configuración ----------
@@ -313,9 +313,16 @@ async function crtmArrivals(raw){
   const name = (j.stop && j.stop.name) || `Parada ${code.replace(/^\d+_/,"")}`;
   return {id: code.replace(/^8_/,""), name, pos: j.stop && j.stop.pos, crtm: true, vehicles: j.vehicles || [], buses};
 }
+// Paradas cercanas: Consorcio (autobuses, Metro, Cercanías y parte de EMT) + EMT (todas sus paradas,
+// también las que el Consorcio no tiene, como El Pardo). Si una fuente falla, vale la otra.
 async function crtmNearest(lat, lng, radius = 350){
-  const j = await (await fetch(crtmUrl(`GetNearestStopsByLocation.php?latitude=${lat.toFixed(5)}&longitude=${lng.toFixed(5)}&mode=&method=1&precision=${Math.round(radius)}`))).json();
-  return parseNearest(j);
+  const base = cfg.proxy.replace(/\/$/,"");
+  const [crtm, emt] = await Promise.allSettled([
+    fetch(crtmUrl(`GetNearestStopsByLocation.php?latitude=${lat.toFixed(5)}&longitude=${lng.toFixed(5)}&mode=&method=1&precision=${Math.round(radius)}`)).then(r=>r.json()).then(parseNearest),
+    fetch(`${base}/emt/near/${lat.toFixed(5)}/${lng.toFixed(5)}/${Math.round(radius)}`).then(r=>r.json()).then(parseEmtNear),
+  ]);
+  if (crtm.status === "rejected" && emt.status === "rejected") throw new Error("Sin datos de paradas");
+  return mergeStops(emt.value || [], crtm.value || []);
 }
 
 // ---------- Demo: buses simulados que se acercan a la parada ----------

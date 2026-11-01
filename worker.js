@@ -6,6 +6,8 @@
 //  /crtm/stop/<parada>    -> Todo lo de una parada del Consorcio en una sola respuesta: datos de la
 //                            parada, tiempos (GetStopsTimes) y posición GPS de los buses de cada línea
 //                            (GetLinesInformation + GetLineLocation). Ahorra peticiones a la web.
+//  /emt/near/<lat>/<lon>/<radio> -> Paradas de EMT cercanas (API de EMT): incluye las que el Consorcio
+//                            no tiene, como las de El Pardo.
 //  /emt/arrives/<parada>  -> Llegadas de EMT Madrid (con posición GPS de cada bus). El worker inicia
 //                            sesión en Mobility Labs, así nadie tiene que registrarse.
 //  /push/key              -> Clave pública VAPID para suscribirse a las notificaciones.
@@ -95,6 +97,27 @@ async function emtArrivals(stop, env) {
     if (r.status !== 401 && j.data) return j;
     if (force) return j;
   }
+}
+
+// Paradas de EMT alrededor de un punto. Las paradas casi no cambian: caché de 1 día por punto redondeado (~100 m)
+async function emtNear(lat, lon, radius, env, ctx) {
+  const r = Math.max(50, Math.min(1500, Math.round(radius)));
+  const la = lat.toFixed(3), lo = lon.toFixed(3);
+  const cache = globalThis.caches && caches.default;
+  const key = new Request(`https://cache.marquesina/emt-near/${la}/${lo}/${r}`);
+  try { const hit = cache && await cache.match(key); if (hit) return hit.json(); } catch {}
+  let data;
+  for (const force of [false, true]) {
+    const token = await emtLogin(env, force);
+    const res = await fetch(`${EMT}/v2/transport/busemtmad/stops/arroundxy/${lo}/${la}/${r}/`, { headers: { accessToken: token } });
+    data = await res.json();
+    if (res.status !== 401 && data && data.data) break;
+  }
+  if (cache && data && Array.isArray(data.data)) {
+    const put = cache.put(key, new Response(JSON.stringify(data), { headers: { "Content-Type": "application/json", "Cache-Control": "max-age=86400" } })).catch(() => {});
+    ctx && ctx.waitUntil ? ctx.waitUntil(put) : await put;
+  }
+  return data;
 }
 
 // Llegadas de EMT con caché de 20 s compartida (web y avisos)
@@ -294,6 +317,13 @@ export default {
       if (!/^Get[A-Za-z]+\.php$/.test(file)) return new Response("Not found", { status: 404, headers: cors });
       const upstream = await fetch(`${CRTM}/${file}${url.search}`, { cf: { cacheTtl: CACHE_SECONDS } });
       return withCors(upstream, cors);
+    }
+
+    // ---- Paradas de EMT cercanas ----
+    const en = url.pathname.match(/^\/emt\/near\/(-?\d{1,2}(?:\.\d+)?)\/(-?\d{1,2}(?:\.\d+)?)\/(\d{1,4})\/?$/);
+    if (en) {
+      try { return json(await emtNear(Number(en[1]), Number(en[2]), Number(en[3]), env, ctx), 200, cors); }
+      catch (e) { return json({ code: "ERR", description: e.message }, 502, cors); }
     }
 
     // ---- EMT con las claves de marquesina ----

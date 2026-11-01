@@ -181,3 +181,20 @@ test("parseNearest reparte EMT, Consorcio, Metro y Cercanías sin repetir", () =
   assert.deepEqual(r[1].lines, ["153"]);
   assert.deepEqual(r[2].lines, ["10"]);
 });
+
+// ---------- Paradas de EMT cercanas (El Pardo no está en el Consorcio) ----------
+import { parseEmtNear, mergeStops } from "../logic.js";
+
+test("parseEmtNear lee las paradas cercanas de EMT y mergeStops evita duplicados", () => {
+  const emt = parseEmtNear({ code: "00", data: [
+    { stopId: 4876, stopName: "El Pardo-Av. de la Guardia", geometry: { type: "Point", coordinates: [-3.7745, 40.5180] },
+      lines: [{ line: "601", label: "601", to: "A" }, { line: "601", label: "601", to: "B" }] },
+    { stopName: "sin id" },
+  ] });
+  assert.deepEqual(emt, [{ net: "emt", code: "4876", kind: "EMT", name: "El Pardo-Av. de la Guardia", pos: [40.5180, -3.7745], lines: ["601"] }]);
+  const crtm = [{ net: "emt", code: "4876", kind: "EMT", name: "X", pos: [0, 0], lines: [] }, { net: "crtm", code: "06756", kind: "Interurbano", name: "Y", pos: [0, 0], lines: ["153"] }];
+  const all = mergeStops(emt, crtm);
+  assert.deepEqual(all.map(s => `${s.net}:${s.code}`), ["emt:4876", "crtm:06756"]);
+  assert.equal(all[0].name, "El Pardo-Av. de la Guardia");
+  assert.deepEqual(parseEmtNear({ code: "80" }), []);
+});
