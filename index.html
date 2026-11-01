@@ -96,7 +96,7 @@ input,select{font:15px var(--body);color:var(--fg);background:var(--bg);border:1
     </div>
     <button id="btnRefresh" aria-label="Actualizar ahora">↻</button>
     <button id="btnNear" title="Usar mi ubicación para cargar las paradas más cercanas">Cerca de mí</button>
-    <button id="btnFind" aria-pressed="false" title="Toca el mapa para ver las paradas del Consorcio cercanas">Buscar paradas</button>
+    <button id="btnFind" aria-pressed="false" title="Toca el mapa para ver las paradas cercanas">Buscar paradas</button>
     <button id="btnCfg">Ajustes</button>
   </div>
   <p class="err note" id="note" hidden></p>
@@ -106,11 +106,11 @@ input,select{font:15px var(--body);color:var(--fg);background:var(--bg);border:1
 <dialog id="cfg">
   <form class="dlg" id="cfgForm" method="dialog">
     <h2>Ajustes</h2>
-    <p>Alcobendas, Sanse e interurbanos funcionan sin registro: añade los códigos de parada o usa Buscar paradas. Para los autobuses de EMT Madrid hace falta una cuenta gratuita de Mobility Labs.</p>
+    <p>Todo funciona sin registro: añade los códigos de parada o usa Cerca de mí y Buscar paradas. La cuenta de Mobility Labs solo hace falta si quieres consultar EMT con tu propio usuario.</p>
     <label>Paradas EMT Madrid (números separados por comas)
       <input id="fStops" inputmode="numeric" placeholder="72, 3054"></label>
     <div class="two">
-      <label>Email Mobility Labs<input id="fEmail" type="email" autocomplete="username"></label>
+      <label>Email Mobility Labs (opcional)<input id="fEmail" type="email" autocomplete="username"></label>
       <label>Contraseña<input id="fPass" type="password" autocomplete="current-password"></label>
     </div>
     <label>Paradas Consorcio: Alcobendas, Sanse, interurbanos (códigos de 5 cifras)
@@ -134,19 +134,20 @@ input,select{font:15px var(--body);color:var(--fg);background:var(--bg);border:1
 // Proxy propio en Cloudflare: viene puesto para que nadie tenga que configurarlo
 const PROXY = "https://marquesina.serbenda.workers.dev";
 // Paradas de ejemplo en Alcobendas (Marqués de la Valdavia) para que la web arranque en vivo
-const DEF = {stops:"72", email:"", pass:"", crtm:"06756, 06758", proxy:PROXY, base:"https://openapi.emtmadrid.es", every:60};
+const DEF = {stops:"", email:"", pass:"", crtm:"06756, 06758", proxy:PROXY, base:"https://openapi.emtmadrid.es", every:60};
 const store = {
   get(){
     let v; try{ v = {...DEF, ...JSON.parse(localStorage.getItem("marquesina")||"{}")}; }catch{ v = {...DEF}; }
     if (!v.proxy) v.proxy = PROXY;   // ajustes antiguos guardados sin proxy
     // Si no hay ninguna parada y no se eligió la demo a propósito, arrancar con las de ejemplo
-    if (!v.crtm.trim() && !(v.email && v.pass) && !v.demo) v.crtm = DEF.crtm;
+    if (!v.crtm.trim() && !v.stops.trim() && !v.demo) v.crtm = DEF.crtm;
     return v;
   },
   set(v){ try{ localStorage.setItem("marquesina", JSON.stringify(v)); }catch{} }
 };
 let cfg = store.get();
-const hasEmt  = () => !!(cfg.email && cfg.pass);
+const ownEmt  = () => !!(cfg.email && cfg.pass);   // cuenta propia de Mobility Labs (opcional)
+const hasEmt  = () => !!cfg.stops.trim();
 const hasCrtm = () => !!(cfg.crtm.trim() && cfg.proxy);
 const isLive  = () => !cfg.demo && (hasEmt() || hasCrtm());
 
@@ -179,14 +180,19 @@ async function login(){
   tokenExp = Date.now() + ((d.tokenSecExpiration||3600) - 60) * 1000;
   return token;
 }
-async function arrivals(stop){
+async function arrivesJson(stop){
+  // Sin cuenta propia, el worker de marquesina consulta EMT con las claves de la aplicación
+  if (!ownEmt()) return (await fetch(`${cfg.proxy.replace(/\/$/,"")}/emt/arrives/${stop}`)).json();
   const t = await login();
   const today = new Date().toISOString().slice(0,10).replace(/-/g,"");
   const r = await fetch(`${cfg.base}/v2/transport/busemtmad/stops/${stop}/arrives/`,{
     method:"POST", headers:{accessToken:t,"Content-Type":"application/json"},
     body:JSON.stringify({cultureInfo:"ES",Text_StopRequired_YN:"Y",Text_EstimationsRequired_YN:"Y",
       Text_IncidencesRequired_YN:"N",DateTime_Referenced_Incidencies_YYYYMMDD:today})});
-  const j = await r.json();
+  return r.json();
+}
+async function arrivals(stop){
+  const j = await arrivesJson(stop);
   const d = j.data && j.data[0];
   if (!d) throw new Error(`La parada ${stop} no devolvió datos (${j.description||"sin respuesta"}).`);
   const si = (d.StopInfo||[])[0] || {};
@@ -245,10 +251,15 @@ async function crtmArrivals(raw){
 }
 async function crtmNearest(lat, lng){
   const j = await (await fetch(crtmUrl(`GetNearestStopsByLocation.php?latitude=${lat.toFixed(5)}&longitude=${lng.toFixed(5)}&mode=&method=1&precision=350`))).json();
-  return asArray(j.stops && j.stops.Stop).filter(s=>/^8_/.test(s.codStop)).map(s=>({
-    code:s.shortCodStop, name:s.name, pos:[s.coordinates.latitude, s.coordinates.longitude],
-    lines:asArray(s.lines && s.lines.Line).map(l=>l.shortDescription)
-  }));
+  const seen = new Set();
+  return asArray(j.stops && j.stops.Stop)
+    .filter(s=>/^[68]_/.test(s.codStop) && !seen.has(s.codStop) && seen.add(s.codStop))
+    .map(s=>({
+      net: s.codStop.startsWith("6_") ? "emt" : "crtm",     // 6_ = EMT Madrid, 8_ = Consorcio
+      code: s.codStop.startsWith("6_") ? s.codStop.slice(2) : s.shortCodStop,
+      name:s.name, pos:[s.coordinates.latitude, s.coordinates.longitude],
+      lines:asArray(s.lines && s.lines.Line).map(l=>l.shortDescription)
+    }));
 }
 
 // ---------- Demo: buses simulados que se acercan a la parada ----------
@@ -354,7 +365,7 @@ async function refresh(){
   else {
     const jobs = [];
     if (hasEmt()) jobs.push(...stops.map(s=>arrivals(s).catch(err=>({id:s, error:
-      err instanceof TypeError ? `No se pudo conectar con la API de EMT (parada ${s}).` : err.message}))));
+      err instanceof TypeError ? `No se pudo conectar con EMT (parada ${s}).` : err.message}))));
     if (hasCrtm()) jobs.push(...cfg.crtm.split(/[,\s]+/).filter(Boolean).map(s=>crtmArrivals(s).catch(err=>({id:s, error:
       err instanceof TypeError ? `No se pudo conectar con el Consorcio a través del proxy (parada ${s}). Revisa la URL del proxy en Ajustes.` : err.message}))));
     last = await Promise.all(jobs);
@@ -411,21 +422,22 @@ map.on("click", async e=>{
   layerFind.clearLayers();
   try{
     const found = await crtmNearest(e.latlng.lat, e.latlng.lng);
-    if (!found.length){ showNote("No hay paradas del Consorcio cerca de ese punto."); return; }
+    if (!found.length){ showNote("No hay paradas de autobús cerca de ese punto."); return; }
     for (const s of found){
-      const added = cfg.crtm.split(/[,\s]+/).includes(s.code);
+      const added = (s.net==="emt" ? cfg.stops : cfg.crtm).split(/[,\s]+/).includes(s.code);
       L.circleMarker(s.pos,{radius:8,color:"#fff",weight:2,fillColor:colorFor(s.code),fillOpacity:1})
-        .bindPopup(`<b>${s.name}</b><br>Parada ${s.code}<br>Líneas: ${s.lines.join(", ")}<br>
-          <button data-add="${s.code}" style="margin-top:6px"${added?" disabled":""}>${added?"Ya añadida":"Añadir a mis paradas"}</button>`)
+        .bindPopup(`<b>${s.name}</b><br>${s.net==="emt"?"EMT Madrid":"Consorcio"} · parada ${s.code}<br>Líneas: ${s.lines.join(", ")}<br>
+          <button data-add="${s.code}" data-net="${s.net}" style="margin-top:6px"${added?" disabled":""}>${added?"Ya añadida":"Añadir a mis paradas"}</button>`)
         .addTo(layerFind);
     }
   }catch(err){ showNote("No se pudo consultar el Consorcio. Revisa la URL del proxy en Ajustes."); }
 });
 document.addEventListener("click", e=>{
   const code = e.target.dataset && e.target.dataset.add; if (!code) return;
-  const list = cfg.crtm.split(/[,\s]+/).filter(Boolean);
+  const field = e.target.dataset.net === "emt" ? "stops" : "crtm";
+  const list = cfg[field].split(/[,\s]+/).filter(Boolean);
   if (!list.includes(code)) list.push(code);
-  cfg = {...cfg, demo:false, crtm:list.join(", ")}; store.set(cfg);
+  cfg = {...cfg, demo:false, [field]:list.join(", ")}; store.set(cfg);
   e.target.textContent = "Añadida"; e.target.disabled = true;
   refresh();
 });
@@ -438,8 +450,9 @@ document.getElementById("btnNear").onclick = ()=>{
       const {latitude:lat, longitude:lng} = p.coords;
       const found = (await crtmNearest(lat, lng))
         .sort((a,b)=>map.distance([lat,lng],a.pos)-map.distance([lat,lng],b.pos)).slice(0,3);
-      if (!found.length){ showNote("No hay paradas del Consorcio cerca de ti. Si estás en Madrid capital, usa las paradas de EMT."); return; }
-      cfg = {...cfg, demo:false, crtm:found.map(s=>s.code).join(", ")}; store.set(cfg);
+      if (!found.length){ showNote("No hay paradas de autobús cerca de ti."); return; }
+      const pick = net => found.filter(s=>s.net===net).map(s=>s.code).join(", ");
+      cfg = {...cfg, demo:false, stops:pick("emt"), crtm:pick("crtm")}; store.set(cfg);
       fitted = false; showNote(`Cargadas ${found.length} paradas cerca de ti.`); refresh();
     }catch{ showNote("No se pudo consultar el Consorcio. Inténtalo de nuevo en un momento."); }
   }, ()=> showNote("No se pudo obtener tu ubicación. Revisa el permiso de ubicación del navegador."),
