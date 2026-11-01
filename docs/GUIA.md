@@ -2,7 +2,7 @@
 
 Esta guía explica **qué es cada pieza de marquesina, cómo encajan y cómo montarlo todo desde cero, paso a paso**, para alguien que no ha usado nunca GitHub, Cloudflare ni un DNS. No hace falta saber programar.
 
-Si ya conoces el proyecto y buscas un detalle técnico, ve a [ARQUITECTURA.md](ARQUITECTURA.md) (cómo funciona por dentro), [MANTENIMIENTO.md](MANTENIMIENTO.md) (tareas y errores) o [DOMINIO.md](DOMINIO.md) (`api.bendi.dev` y el DNS).
+Si ya conoces el proyecto y buscas un detalle técnico, ve a [REFERENCIA.md](REFERENCIA.md) (cómo funciona cada parte por dentro, con diagramas), [ARQUITECTURA.md](ARQUITECTURA.md) (por qué se diseñó así), [MANTENIMIENTO.md](MANTENIMIENTO.md) (tareas y errores) o [DOMINIO.md](DOMINIO.md) (`api.bendi.dev` y el DNS).
 
 ---
 
@@ -642,6 +642,8 @@ flowchart LR
   TT --> L
   TT --> W
 ```
+
+Cada archivo de código empieza con un bloque que explica qué hace, quién lo usa y sus secciones. Cada función tiene encima su descripción con un ejemplo. Antes de cambiar nada, lee [CONTRIBUTING.md](../CONTRIBUTING.md).
 
 | Si quieres cambiar… | Toca… |
 |---|---|

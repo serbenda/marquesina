@@ -4,6 +4,12 @@
   "type": "module",
   "description": "Tus autobuses de Madrid en el mapa, en tiempo real",
   "scripts": {
-    "test": "node --test tests/*.test.js"
-  }
+    "test": "node --test tests/*.test.js",
+    "check": "node --check worker.js && node --check sw.js && node --check logic.js && node --check push.js"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "repository": "github:serbenda/marquesina",
+  "homepage": "https://bendi.dev/marquesina/"
 }
