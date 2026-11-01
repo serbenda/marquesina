@@ -1,6 +1,6 @@
 # marquesina
 
-Mapa en tiempo real de los autobuses de EMT Madrid que llegan a tus paradas: dónde están, cuánto les falta y si te da tiempo a salir.
+Mapa en tiempo real de los autobuses que llegan a tus paradas (EMT Madrid, y también interurbanos y urbanos de Alcobendas, San Sebastián de los Reyes y el resto de la Comunidad): dónde están, cuánto les falta y si te da tiempo a salir.
 
 ## Qué hace
 
@@ -17,13 +17,20 @@ Mapa en tiempo real de los autobuses de EMT Madrid que llegan a tus paradas: dó
 
 Las credenciales se guardan solo en el `localStorage` de tu navegador.
 
-## Proxy opcional (CORS)
+## Alcobendas, Sanse e interurbanos (Consorcio de Transportes)
 
-Si el navegador no puede llamar directamente a la API de EMT, despliega `worker.js` en Cloudflare Workers (plan gratuito):
+Los autobuses que no son de EMT (interurbanos como el 151, 153, 158, 827 o los urbanos de Alcobendas y Sanse) salen de la API del Consorcio Regional de Transportes de Madrid. No necesita registro, pero no admite llamadas directas desde otras webs, así que hay que pasar por el proxy (`worker.js`).
 
-1. Cloudflare → Workers → Create → pega el contenido de `worker.js` → Deploy.
-2. Ajusta `ALLOWED_ORIGIN` si la web no está en `https://serbenda.github.io`.
-3. Pon la URL del worker (`https://xxx.workers.dev`) en **Ajustes → URL de la API**.
+- Da los **tiempos de llegada** por parada, en directo cuando el bus lleva GPS y según horario cuando no. No da la posición de los autobuses, así que en el mapa las llegadas aparecen junto a cada parada.
+- Para encontrar tus paradas, pulsa **Buscar paradas**, toca el mapa y añade las que quieras.
+
+## Proxy (Cloudflare Workers)
+
+1. Crea una cuenta gratuita en Cloudflare → **Workers & Pages** → **Create** → **Worker** → **Deploy**.
+2. **Edit code**, pega el contenido de `worker.js` y pulsa **Deploy**.
+3. Copia la URL del worker (`https://xxx.workers.dev`) en **Ajustes → URL de tu proxy**.
+
+Si publicas la web en otro dominio, añádelo a `ALLOWED_ORIGINS` en `worker.js`.
 
 ## Publicar
 
@@ -31,5 +38,5 @@ Es una web estática: activa GitHub Pages sobre la rama `main` (carpeta raíz).
 
 ## Datos
 
-- Autobuses: API de EMT Madrid (Mobility Labs).
+- Autobuses: API de EMT Madrid (Mobility Labs) y API del Consorcio Regional de Transportes de Madrid.
 - Mapa: © colaboradores de OpenStreetMap.
