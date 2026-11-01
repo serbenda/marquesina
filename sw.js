@@ -34,7 +34,7 @@ self.addEventListener("fetch", e => {
   const url = new URL(req.url);
 
   // Datos en vivo y mapa: siempre de la red
-  if (url.hostname.endsWith("workers.dev") || url.hostname.endsWith("tile.openstreetmap.org")) return;
+  if (url.hostname.endsWith("workers.dev") || url.hostname === "api.bendi.dev" || url.hostname.endsWith("tile.openstreetmap.org")) return;
 
   // La página: primero red, si falla la guardada
   if (req.mode === "navigate") {

@@ -245,7 +245,10 @@ import { unb64url } from "./push.js";
 
 // ---------- Configuración ----------
 // Worker de marquesina en Cloudflare (proxy de EMT y del Consorcio, y avisos). Fijo: no se configura.
-const PROXY = "https://marquesina.serbenda.workers.dev";
+// Dos direcciones del mismo worker: la propia (api.bendi.dev) y la de Cloudflare (*.workers.dev), que
+// algunas redes bloquean (Pi-hole, AdGuard, routers, empresas). Si una no responde, se usa la otra.
+const PROXIES = ["https://api.bendi.dev", "https://marquesina.serbenda.workers.dev"];
+let PROXY = PROXIES[0];
 // Paradas de ejemplo en Alcobendas (Marqués de la Valdavia) para que la web arranque en vivo
 // meta: datos propios de cada parada -> {"emt:69": {alias:"Casa", walk:5, fav:true}, "crtm:06756": {...}}
 // alerts: avisos programados por parada -> {"crtm:06756": {on, days:[1..7], from:"07:30", to:"09:00", line:"", lead:3}}
@@ -295,11 +298,23 @@ function busIcon(line, mode, dx = 0, dy = 0){
 const stopIcon = L.divIcon({className:"", iconSize:[18,18], iconAnchor:[9,9], html:'<div class="stop-icon"></div>'});
 
 // Ninguna petición puede quedarse colgada: a los 10 s se da por fallida (y se usan los últimos datos)
-async function getJson(url, ms = 10000){
+async function getJsonOnce(url, ms){
   const c = new AbortController(); const t = setTimeout(() => c.abort(), ms);
   try { return await (await fetch(url, {signal: c.signal})).json(); }
   catch (e) { throw e.name === "AbortError" ? new TypeError("Tiempo de espera agotado") : e; }
   finally { clearTimeout(t); }
+}
+// Si la dirección del worker no responde (red que la bloquea, DNS…), se prueba la otra y se queda la que funcione
+async function getJson(url, ms = 10000){
+  try { return await getJsonOnce(url, ms); }
+  catch (e) {
+    const base = PROXIES.find(p => url.startsWith(p));
+    if (!(e instanceof TypeError) || !base) throw e;
+    for (const other of PROXIES.filter(p => p !== base)){
+      try { const j = await getJsonOnce(other + url.slice(base.length), ms); PROXY = other; return j; } catch {}
+    }
+    throw e;
+  }
 }
 
 // ---------- API EMT ----------
@@ -727,7 +742,7 @@ async function getSubscription(create){
   if (sub || !create) return sub;
   const perm = await Notification.requestPermission();
   if (perm !== "granted") throw new Error("Sin permiso de notificaciones no se pueden enviar avisos. Actívalo en los ajustes del navegador.");
-  const {publicKey} = await (await fetch(pushUrl("key"))).json();
+  const {publicKey} = await getJson(pushUrl("key"));
   return reg.pushManager.subscribe({userVisibleOnly: true, applicationServerKey: unb64url(publicKey)});
 }
 

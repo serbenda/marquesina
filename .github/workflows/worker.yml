@@ -30,8 +30,13 @@ jobs:
 
       - name: Comprobar que responde
         run: |
-          sleep 10
-          curl -fsS "https://marquesina.serbenda.workers.dev/crtm/GetStops.php?codStop=8_06756" | grep -q "MARQU"
-          curl -fsS "https://marquesina.serbenda.workers.dev/emt/arrives/69" | grep -q '"code":"00"'
+          # La primera vez, el certificado de api.bendi.dev puede tardar unos minutos: se reintenta hasta 5 min
+          for i in $(seq 1 30); do
+            if curl -fsS "https://api.bendi.dev/push/key" | grep -q '"publicKey"'; then break; fi
+            echo "api.bendi.dev aún no responde (intento $i), esperando 10 s"; sleep 10
+          done
+          curl -fsS "https://api.bendi.dev/crtm/GetStops.php?codStop=8_06756" | grep -q "MARQU"
+          curl -fsS "https://api.bendi.dev/emt/arrives/69" | grep -q '"code":"00"'
+          curl -fsS "https://api.bendi.dev/push/key" | grep -q '"publicKey"'
           curl -fsS "https://marquesina.serbenda.workers.dev/push/key" | grep -q '"publicKey"'
-          echo "Worker desplegado y respondiendo"
+          echo "Worker desplegado y respondiendo en api.bendi.dev y en workers.dev"
