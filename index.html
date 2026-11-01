@@ -242,6 +242,47 @@ async function crtmStopInfo(code){
   crtmStopCache.set(code, info);
   return info;
 }
+// Recorridos de cada línea (para saber en qué itinerario y sentido está la parada). No cambian: se guardan.
+const crtmLineCache = new Map();
+async function crtmItineraries(codLine){
+  if (crtmLineCache.has(codLine)) return crtmLineCache.get(codLine);
+  const p = fetch(crtmUrl(`GetLinesInformation.php?activeItinerary=1&codLine=${encodeURIComponent(codLine)}`))
+    .then(r=>r.json())
+    .then(j=>{
+      const info = asArray(j.lines && j.lines.LineInformation)[0] || {};
+      return asArray(info.itinerary && info.itinerary.Itinerary).map(it=>({
+        cod: it.codItinerary, dir: it.direction,
+        stops: new Set(asArray(it.stops && it.stops.StopInformation).map(st=>st.codStop))
+      }));
+    })
+    .catch(()=>{ crtmLineCache.delete(codLine); return []; });
+  crtmLineCache.set(codLine, p);
+  return p;
+}
+
+// Posición GPS real de los autobuses de cada línea que pasa por la parada (GetLineLocation)
+async function crtmVehicles(code, times){
+  const lines = new Map();
+  for (const t of times) if (t.line && !lines.has(`${t.line.codLine}|${t.direction}`)) lines.set(`${t.line.codLine}|${t.direction}`, t);
+  const found = await Promise.all([...lines.values()].map(async t=>{
+    try{
+      const its = await crtmItineraries(t.line.codLine);
+      const it = its.find(i=>i.dir == t.direction && i.stops.has(code)) || its.find(i=>i.stops.has(code));
+      if (!it) return [];
+      const j = await (await fetch(crtmUrl(`GetLineLocation.php?mode=${t.line.codMode||8}&codItinerary=${encodeURIComponent(it.cod)}&codLine=${encodeURIComponent(t.line.codLine)}&codStop=${code}&direction=${it.dir}`))).json();
+      return asArray(j.vehiclesLocation && j.vehiclesLocation.VehicleLocation)
+        .filter(v=>v.coordinates && v.coordinates.latitude)
+        .map(v=>({
+          key:`v-${v.codVehicle || t.line.codLine + "-" + v.service}`,
+          line: (v.line && v.line.shortDescription) || t.line.shortDescription,
+          dest: (t.destination||"").replace(/^.*?-\s*/,"") || t.destination,
+          pos:[v.coordinates.latitude, v.coordinates.longitude]
+        }));
+    }catch{ return []; }   // si falla la posición, siguen valiendo los tiempos
+  }));
+  return found.flat();
+}
+
 async function crtmArrivals(raw){
   const code = crtmCode(raw.trim());
   const [info, j] = await Promise.all([
@@ -251,8 +292,9 @@ async function crtmArrivals(raw){
   const st = j.stopTimes;
   if (!st) throw new Error(`La parada ${raw} del Consorcio no devolvió datos.`);
   const now = new Date(st.actualDate).getTime();
+  const vehicles = await crtmVehicles(code, asArray(st.times && st.times.Time));
   return {
-    id: code.replace(/^8_/,""), name: info.name, pos: info.pos, crtm: true,
+    id: code.replace(/^8_/,""), name: info.name, pos: info.pos, crtm: true, vehicles,
     buses: (()=>{
       const perLine = {};
       return asArray(st.times && st.times.Time).map((t,i)=>({
@@ -380,7 +422,7 @@ function renderList(){
       const first = g.items[0], e = fmtEta(first.eta);
       const more = g.items.slice(1,3).map(b=>fmtEta(b.eta).txt + "′").join(" · ");
       const detail = s.crtm ? (first.live ? "En directo (GPS)" : "Según horario") : (fmtDist(first.dist) || "sin posición");
-      return `<div class="row" data-key="${esc(first.key)}">
+      return `<div class="row" data-key="${esc(first.key)}" data-line="${esc(g.line)}" data-stop="${esc(s.id)}">
         <div class="badge" style="background:${colorFor(g.line)}">${esc(g.line)}</div>
         <div class="dest"><b>${esc(g.dest)}</b><small>${detail}${more ? ` · <span class="next">luego ${more}</span>` : ""}</small></div>
         <div class="eta"><strong>${e.txt}<small style="font-size:13px"> ${e.unit}</small></strong>${chipFor(g, m.walk)}</div>
@@ -404,12 +446,12 @@ function renderMap(){
         // El Consorcio no da posiciones: mostramos las próximas llegadas junto a la parada
         const next = s.buses.slice().sort((a,b)=>a.eta-b.eta).slice(0,3)
           .map(b=>`<b style="color:${colorFor(b.line)}">${b.line}</b> ${fmtEta(b.eta).txt}′`).join(" · ");
-        mk.bindTooltip(next || s.name,{permanent:true,direction:"top",offset:[0,-10]});
+        mk.bindTooltip(next || esc(metaOf(s).alias || s.name),{permanent:true,direction:"top",offset:[0,-10]});
         mk.bindPopup(`<b>${s.name}</b><br>Parada ${s.id}`);
       } else mk.bindTooltip(s.name);
     }
-    for (const b of s.buses){
-      if (!b.pos) continue;
+    for (const b of [...s.buses, ...(s.vehicles||[])]){
+      if (!b.pos || seen.has(b.key)) continue;
       seen.add(b.key); bounds.push(b.pos);
       let m = busMarkers.get(b.key);
       if (!m){
@@ -420,7 +462,9 @@ function renderMap(){
         m.marker.setLatLng(b.pos);
         m.trail.addLatLng(b.pos);
       }
-      m.marker.bindPopup(`<b>Línea ${b.line}</b> → ${b.dest}<br>${fmtDist(b.dist)} · ${fmtEta(b.eta).txt} min`);
+      m.marker.bindPopup(b.eta == null
+        ? `<b>Línea ${esc(b.line)}</b> → ${esc(b.dest)}<br>Posición GPS del Consorcio`
+        : `<b>Línea ${esc(b.line)}</b> → ${esc(b.dest)}<br>${fmtDist(b.dist)} · ${fmtEta(b.eta).txt} min`);
     }
   }
   for (const [k,m] of busMarkers) if (!seen.has(k)){ map.removeLayer(m.marker); map.removeLayer(m.trail); busMarkers.delete(k); }
@@ -429,7 +473,14 @@ function renderMap(){
 
 document.getElementById("list").addEventListener("click", e=>{
   const row = e.target.closest(".row"); if (!row) return;
-  const m = busMarkers.get(row.dataset.key);
+  let m = busMarkers.get(row.dataset.key);
+  if (!m && row.dataset.line){
+    // Consorcio: los tiempos no dicen qué vehículo es; se elige el de esa línea más cercano a la parada
+    const s = last.find(x=>x.crtm && x.id === row.dataset.stop);
+    const v = s && (s.vehicles||[]).filter(v=>v.line === row.dataset.line)
+      .sort((a,b)=>map.distance(a.pos,s.pos)-map.distance(b.pos,s.pos))[0];
+    m = v && busMarkers.get(v.key);
+  }
   if (m){ map.setView(m.marker.getLatLng(), 16); m.marker.openPopup(); }
 });
 
