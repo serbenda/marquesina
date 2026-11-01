@@ -107,6 +107,10 @@ Teselas de OpenStreetMap (`tile.openstreetmap.org`) con atribución. Para un uso
 - **Recuadros que no se pisan:** `spreadMarkers()` desplaza en abanico los recuadros que caen casi en el mismo punto de la pantalla. Se recalcula al hacer zoom.
 - **Metro:** colores oficiales de cada línea (`METRO` en `index.html`). En el resto, color estable por número de línea.
 
+### Carga rápida
+- Cada parada se enseña en cuanto llega (`doRefresh()`), sin esperar a las demás; mientras tanto se ven sus datos anteriores. El mapa se redibuja al final, para encuadrar con todas.
+- Ninguna petición puede quedarse colgada: `getJson()` la corta a los 10 s y la parada pasa a *Sin conexión* con sus últimos datos.
+
 ### Datos antiguos
 - Si una parada falla al actualizar, se conservan sus últimos datos durante 15 minutos con `stale: true`. Cada parada lleva su propia hora de consulta (`at`), y los minutos se descuentan desde ella.
 - Debajo del nombre aparece *Sin conexión · datos hace N min*. Si fallan todas, la etiqueta superior pasa de *En vivo* a *Sin conexión*.
@@ -134,9 +138,9 @@ Teselas de OpenStreetMap (`tile.openstreetmap.org`) con atribución. Para un uso
 
 ## 5. El proxy (`worker.js`)
 
-- `/crtm/stop/<parada>` → **todo lo de una parada del Consorcio en una sola respuesta**: `stop` (nombre y posición, de `GetStops`, caché 1 día), `stopTimes` (de `GetStopsTimes`) y `vehicles` (posición de los buses de cada línea con `GetLinesInformation` + `GetLineLocation`). La web hace así 1 petición por parada en vez de hasta 8; las consultas al Consorcio desde el worker son subpeticiones y no cuentan en el límite diario.
+- `/crtm/stop/<parada>` → **todo lo de una parada del Consorcio en una sola respuesta**: `stop` (nombre y posición, de `GetStops`, caché 1 día), `stopTimes` (de `GetStopsTimes`) y `vehicles` (posición de los buses de cada línea con `GetLinesInformation` + `GetLineLocation`). La posición de los buses espera como mucho 2,5 s (`VEHICLES_WAIT_MS`): si el Consorcio tarda más (a veces tarda hasta 8 s en dar el recorrido de una línea), la respuesta sale con los tiempos y la última posición conocida (menos de 1 min), y la consulta termina en segundo plano (`ctx.waitUntil`) para la siguiente vez. La web hace así 1 petición por parada en vez de hasta 8; las consultas al Consorcio desde el worker son subpeticiones y no cuentan en el límite diario.
 - `/crtm/<Archivo>.php?...` → `https://www.crtm.es/widgets/api/<Archivo>.php?...`. Solo deja pasar nombres que encajan con `Get*.php`, así no se puede usar como proxy abierto. Lo usa la búsqueda de paradas (`GetNearestStopsByLocation`). Cloudflare cachea 10 s.
-- `/emt/near/<lat>/<lon>/<radio>` → paradas de EMT alrededor de un punto (`GET /v2/transport/busemtmad/stops/arroundxy/<lon>/<lat>/<radio>/`, radio 50–1.500 m). Caché de 1 día por punto redondeado a ~100 m, porque las paradas casi no cambian.
+- `/emt/near/<lat>/<lon>/<radio>` → paradas de EMT alrededor de un punto (`GET /v2/transport/busemtmad/stops/arroundxy/<lon>/<lat>/<radio>/`, radio 50–1.500 m). Caché de 1 día por punto redondeado a ~100 m, porque las paradas casi no cambian. También se guarda la respuesta *sin paradas* (código `01`).
 - `/emt/arrives/<parada>` → inicia sesión en EMT con los secretos de la aplicación (o los de la cuenta si fallan) y devuelve las llegadas de la parada (mismo JSON que EMT). Guarda la respuesta 10 s en la caché de Cloudflare (`caches.default`), así varios usuarios mirando la misma parada generan una sola consulta.
 - **CORS:** responde con `Access-Control-Allow-Origin` solo para los orígenes de `ALLOWED_ORIGINS` (`https://bendi.dev`, `https://serbenda.github.io`).
 - **Secretos:** `EMT_CLIENT_ID` y `EMT_PASSKEY` (y de respaldo `EMT_EMAIL` y `EMT_PASSWORD`) se configuran en Cloudflare → Worker `marquesina` → Settings → Variables and Secrets (tipo *Secret*). No están en el repo. Para cambiarlos (por ejemplo, si se regeneran en Mobility Labs), se editan ahí y se pulsa Deploy.
