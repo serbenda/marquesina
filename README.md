@@ -218,7 +218,6 @@ Antes de abrir una PR, lee [CONTRIBUTING.md](CONTRIBUTING.md). Lo más important
 - Trabajar en `development` y llevar los cambios a `main` con una PR.
 - Commits firmados como `Sergio Santiago Bendaña Quesada <serbenda@gmail.com>`.
 - Ningún secreto en el código.
-- Si cambias `logic.js`, `push.js` o los iconos, sube `VERSION` en `sw.js`.
 - La documentación se actualiza en la misma PR.
 
 **Ver la web en local:** `python3 -m http.server 8000` y abrir <http://localhost:8000>. La pantalla y el mapa funcionan, pero el worker solo responde a `bendi.dev`, así que desde `localhost` las paradas darán error de conexión. Para la lógica, usa los tests.
@@ -279,7 +278,7 @@ EMT no da el tiempo exacto cuando el bus está a más de 20 minutos.
 <details>
 <summary><b>He cambiado algo y la web sigue igual</b></summary>
 
-Recarga forzando (**Ctrl + Shift + R** o **Cmd + Shift + R**). Si cambiaste `logic.js`, `push.js` o los iconos, comprueba que subiste `VERSION` en `sw.js`.
+Recarga forzando (**Ctrl + Shift + R** o **Cmd + Shift + R**). GitHub Pages tarda hasta 10 minutos en servir la versión nueva.
 </details>
 
 <details>

@@ -4,6 +4,10 @@ Lo más reciente, arriba. Cada entrada dice qué cambia para quien usa la web y 
 
 ## Sin publicar
 
+- **Arreglado (urgente):** tras publicar una versión, la web podía quedarse en *Cargando…* hasta recargar dos veces. Ahora siempre usa los archivos nuevos y, si algo falla al arrancar, ofrece **Recargar**.
+
+## 2 de noviembre de 2026 (publicado)
+
 - **Aviso mientras busca:** *Buscando paradas…* con ruedita y, al terminar, cuántas hay. Mensaje claro en paradas sin servicio.
 - **Compartir paradas por enlace** (Ajustes → *Compartir mis paradas*).
 - **Prueba en navegador** en cada PR, tras publicar y cada 3 horas, con un bloqueo de Cloudflare simulado.

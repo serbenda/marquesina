@@ -15,6 +15,6 @@
 ## Lista de comprobación
 
 - [ ] Si cambia `logic.js` o `worker.js`: hay tests nuevos o ajustados
-- [ ] Si cambia `logic.js`, `push.js` o los iconos: `VERSION` subida en `sw.js`
+- [ ] Si cambia `sw.js`: lo nuestro sigue yendo "primero red"
 - [ ] Documentación al día (`docs/`, `README.md`) y una línea en `CHANGELOG.md`
 - [ ] Ningún secreto en el código

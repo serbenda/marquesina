@@ -386,6 +386,15 @@ Formato sin culpables (*blameless*): qué pasó, por qué y qué se cambió para
 
 Las búsquedas repetidas en la misma zona tardan milisegundos (caché de 1 día). Los minutos de una parada del Consorcio tardaron entre 1 y 9 s la primera vez; por eso la web espera ahora hasta 15 s y el worker guarda 1 día el nombre de cada parada y los recorridos de las líneas.
 
+### INC-8 · La web no arrancaba tras publicar una versión (2 nov, mañana)
+- **Impacto:** quien ya tenía la web abierta alguna vez (con su copia guardada) se quedaba en *"Cargando…"* sin mapa ni paradas hasta recargar una segunda vez. Afectó a todas las personas que la usaban, también desde el móvil.
+- **Detección:** al revisar la web para la mejora de experiencia de uso. Consola: *"The requested module './logic.js' does not provide an export named 'parseShareParam'"*.
+- **Causa raíz:** `sw.js` servía `logic.js` "primero desde la copia". La PR #29 publicó un `index.html` que usaba una función nueva de `logic.js`; la página llegó nueva (va "primero red") pero `logic.js` salió de la copia vieja. Subir `VERSION` no basta: el service worker viejo sigue atendiendo esa primera carga.
+- **Por qué no se vio antes:** la prueba en navegador bloquea el service worker y siempre carga todo nuevo; y los errores de la página solo se anotaban, no hacían fallar la prueba.
+- **Arreglo:** todo lo nuestro va "primero red"; los `import` llevan `?v=7` para que los móviles con la copia vieja pidan el archivo nuevo; si en 15 s la web no arranca, enseña *"No se ha podido cargar"* con un botón **Recargar**.
+- **Prevención:** la prueba en navegador falla ante cualquier error de JavaScript.
+- **Lección:** una caché "primero copia" para archivos que cambian es una bomba de relojería en cada publicación.
+
 ## 12. Mejoras de fiabilidad pendientes
 
 | Mejora | Qué resuelve | Esfuerzo |

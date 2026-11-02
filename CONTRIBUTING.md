@@ -35,7 +35,7 @@ En español, en presente y diciendo **qué cambia para quien usa la web**:
 - [ ] `npm test` pasa.
 - [ ] Si cambia `logic.js`: hay un test nuevo o actualizado en `tests/logic.test.js`.
 - [ ] Si cambia `worker.js`: hay un test en `tests/worker.test.js` y la ruta funciona (`/push/key`, `/crtm/stop/06756`, `/emt/arrives/69`).
-- [ ] Si cambia `logic.js`, `push.js` o los iconos: se ha subido `VERSION` en `sw.js`.
+- [ ] Si cambia `sw.js`: la estrategia sigue siendo "primero red" para lo nuestro (ver [REFERENCIA §8](docs/REFERENCIA.md#8-el-service-worker-swjs)).
 - [ ] Si cambia una ruta, un límite, un secreto o un paso de configuración: la documentación está al día ([REFERENCIA](docs/REFERENCIA.md), [GUIA](docs/GUIA.md), [MANTENIMIENTO](docs/MANTENIMIENTO.md)).
 - [ ] Hay una línea nueva en [CHANGELOG.md](CHANGELOG.md).
 - [ ] No hay contraseñas, claves ni tokens en ningún archivo.

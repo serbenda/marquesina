@@ -616,7 +616,7 @@ flowchart LR
 
 | Qué | Dónde | Cuánto | Clave |
 |---|---|---|---|
-| Página, `logic.js`, `push.js`, iconos, Leaflet | `sw.js` (Cache Storage) | Hasta cambiar `VERSION` | URL |
+| Página, `logic.js`, `push.js`, iconos (solo sin conexión: con conexión, siempre la red) · Leaflet y fuentes (primero caché) | `sw.js` (Cache Storage) | Hasta cambiar `VERSION` | URL |
 | Llegadas de EMT | Cache API | 10 s | `cache.marquesina/emt/<parada>` |
 | Paradas de EMT cercanas | Cache API | 1 día | `cache.marquesina/emt-near/<lat>/<lon>/<r>` |
 | Últimos datos buenos del Consorcio | Cache API | 15 min | `cache.marquesina/crtm-last/<código>` |
@@ -799,9 +799,9 @@ flowchart TB
   B -- "No" --> NET["Red normal"]
   B -- "Sí" --> C{"¿Worker (api.bendi.dev,<br/>*.workers.dev) o teselas OSM?"}
   C -- "Sí" --> NET
-  C -- "No" --> D{"¿Es la página<br/>(navegación)?"}
+  C -- "No" --> D{"¿Es nuestro (bendi.dev):<br/>página, logic.js, push.js,<br/>iconos, manifest?"}
   D -- "Sí" --> E["Primero red;<br/>si falla, la copia guardada"]
-  D -- "No" --> F{"¿Mismo origen, cdnjs<br/>o Google Fonts?"}
+  D -- "No" --> F{"¿cdnjs (Leaflet)<br/>o Google Fonts?"}
   F -- "Sí" --> G["Primero caché;<br/>si no está, red y se guarda"]
   F -- "No" --> NET
 ```
@@ -816,7 +816,7 @@ stateDiagram-v2
   activo --> install: se publica un sw.js distinto
 ```
 
-⚠️ Si cambias archivos que guarda (`logic.js`, `push.js`, iconos…), **sube `VERSION`** en `sw.js` (por ejemplo, de `marquesina-v2` a `marquesina-v3`). Si no, algunos móviles seguirán usando la versión anterior de esos archivos. La página (`index.html`) no lo necesita, porque va "primero red".
+Desde la v7 **todo lo nuestro va "primero red"**: con conexión siempre se usa lo último publicado y la copia solo sirve sin conexión. Hasta la v6, `logic.js` iba "primero caché": al publicar, la página nueva se juntaba con el `logic.js` viejo y la web no arrancaba (ver [OPERACIONES.md](OPERACIONES.md), INC-8). Por eso los `import` de `index.html` llevan `?v=7`: así los móviles con la copia vieja piden el archivo nuevo. **Ya no hace falta subir `VERSION` en cada cambio**; solo sirve para vaciar las copias guardadas.
 
 ---
 
