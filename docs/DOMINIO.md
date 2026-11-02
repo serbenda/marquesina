@@ -25,15 +25,17 @@ El 1 de noviembre de 2026 la web dejó de funcionar desde la red de casa: *"No s
 flowchart LR
   W[Web bendi.dev/marquesina] -- "1.º" --> A[api.bendi.dev]
   W -. "si falla" .-> B[marquesina.serbenda.workers.dev]
+  W -. "si Cloudflare está bloqueado" .-> R[Repetidor marquesina.serbenda.deno.net]
+  R --> A
   A --> K[Mismo worker 'marquesina' en Cloudflare]
   B --> K
 ```
 
-- **Las dos direcciones apuntan al mismo worker**, con el mismo código, los mismos secretos y los mismos avisos.
-- **La web** (`index.html`) usa `PROXIES = ["https://api.bendi.dev", "https://marquesina.serbenda.workers.dev"]`. Si una petición a una dirección falla por red o por tiempo de espera, `getJson()` prueba la otra y se queda con la que funcione. Así no hay corte durante el cambio, y la web funciona aunque una de las dos esté bloqueada.
+- **Las dos direcciones de Cloudflare apuntan al mismo worker**, con el mismo código, los mismos secretos y los mismos avisos. Más tarde se añadió un tercer camino fuera de Cloudflare, el repetidor de Deno Deploy, para los bloqueos de LaLiga ([RESPALDO.md](RESPALDO.md)).
+- **La web** (`index.html`) usa `PROXIES = ["https://api.bendi.dev", "https://marquesina.serbenda.workers.dev", "https://marquesina.serbenda.deno.net"]`. Al abrir, `pickProxy()` prueba los tres a la vez y prefiere `api.bendi.dev`; si después una petición falla por red o por tiempo de espera, `getJson()` prueba las otras a la vez y se queda con la que funcione.
 - **El worker** (`wrangler.toml`) declara las dos: `workers_dev = true` y `routes = [{ pattern = "api.bendi.dev", custom_domain = true }]`. Al desplegar, wrangler crea en Cloudflare el registro DNS y el certificado de `api.bendi.dev`.
-- **Los chequeos** (`healthcheck.yml` cada hora y `worker.yml` al desplegar) comprueban `api.bendi.dev` y también `workers.dev`.
-- **El service worker** (`sw.js`) no guarda nunca respuestas de ninguna de las dos direcciones.
+- **Los chequeos** (`healthcheck.yml` cada hora y `worker.yml` al desplegar) comprueban `api.bendi.dev` y también `workers.dev`; el horario comprueba además el repetidor.
+- **El service worker** (`sw.js`) no guarda nunca respuestas de ninguno de los tres caminos.
 
 ## 3. DNS de bendi.dev
 
@@ -65,7 +67,7 @@ Todos los registros de GitHub Pages deben ir en **DNS only** (nube gris), no *Pr
 | 1 | Añadir `bendi.dev` a Cloudflare, plan Free, importando registros | Cloudflare → *Add a domain* | ✅ Hecho |
 | 2 | Pasar a **DNS only** los 9 registros importados (4 A, 4 AAAA, 1 CNAME) | Cloudflare → bendi.dev → **DNS → Records** → seleccionar los registros → **Edit** (edición en bloque) → *Proxy status* apagado → *Save* | ✅ Hecho (9 de 9) |
 | 3 | Añadir el TXT de verificación de GitHub: nombre `_github-pages-challenge-serbenda`, valor `893263541f409edd80b575fb2892c9` | Cloudflare → DNS → Records → *Add record* | ✅ Hecho (10 registros en total, todos DNS only) |
-| 4 | Cambiar los nameservers a `hassan.ns.cloudflare.com` y `magali.ns.cloudflare.com` | Porkbun → *Domain Management* → bendi.dev → **Authoritative Nameservers** → *Edit* (borrar los 4 de Porkbun, poner los 2 de Cloudflare) → *Save Nameservers* | ✅ Hecho (1/11/2026, 18:50) |
+| 4 | Cambiar los nameservers a `hassan.ns.cloudflare.com` y `magali.ns.cloudflare.com` | Porkbun → *Domain Management* → en la fila de bendi.dev, botón **NS** → cuadro *Edit Authoritative Nameservers* (borrar los 4 de Porkbun, poner los 2 de Cloudflare) → *Save Nameservers* | ✅ Hecho (1/11/2026, 18:50) |
 | 5 | Esperar a que Cloudflare marque bendi.dev como **Active** (minutos a unas horas; llega un email) | Cloudflare → bendi.dev → Overview (se puede forzar con *Check nameservers now*) | ✅ Active (1/11/2026, ~19:05) |
 | 6 | Comprobar que `https://bendi.dev` y `https://bendi.dev/marquesina/` siguen cargando con candado | Navegador | ✅ `bendi.dev/marquesina` carga igual |
 | 7 | **Fusionar la PR de `api.bendi.dev`** (mejor con la zona *Active*: antes, wrangler publica el worker pero la comprobación final falla porque el nombre aún no existe en Internet) | GitHub | ✅ Fusionada (#16), antes de que la zona estuviera *Active*: el despliegue publicó el worker, pero la comprobación falló con `Could not resolve host: api.bendi.dev` |

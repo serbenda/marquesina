@@ -218,3 +218,16 @@ test("compartir paradas: el enlace lleva solo los códigos y se valida al abrirl
   // Ida y vuelta
   assert.deepEqual(parseShareParam(shareParam({ stops: "69", crtm: "06756" })), { emt: ["69"], crtm: ["06756"] });
 });
+
+test("prettyName: destinos en mayúsculas más legibles, sin estropear lo que ya está bien", async () => {
+  const { prettyName } = await import("../logic.js");
+  assert.equal(prettyName("SAN SEBASTIÁN DE LOS REYES (Pza. Univ. Popular)"), "San Sebastián de los Reyes (Pza. Univ. Popular)");
+  assert.equal(prettyName("ALCOBENDAS (Av. de España)"), "Alcobendas (Av. de España)");
+  assert.equal(prettyName("PASO APROX. POR TRES CANTOS (Puerta de Madrid)"), "Paso Aprox. por Tres Cantos (Puerta de Madrid)");
+  assert.equal(prettyName("MARQUÉS VALDAVIA-RAMÓN FDEZ.GUISASOLA"), "Marqués Valdavia-Ramón Fdez.Guisasola");
+  assert.equal(prettyName("PZA.CUESTAS-UNED"), "Pza.Cuestas-UNED");
+  assert.equal(prettyName("Plaza de Castilla"), "Plaza de Castilla");
+  assert.equal(prettyName("LA LATINA"), "La Latina");
+  assert.equal(prettyName("M-30 KM 5"), "M-30 Km 5");
+  assert.equal(prettyName(null), "");
+});

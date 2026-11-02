@@ -55,29 +55,38 @@
 *{box-sizing:border-box}
 html,body{height:100%;margin:0}
 body{background:var(--bg);color:var(--fg);font:15px/1.45 var(--body);display:flex;flex-direction:column}
-#map{flex:1 1 55%;min-height:260px}
+/* Móvil: la lista (lo que más se mira) ocupa más que el mapa */
+#map{flex:1 1 38%;min-height:200px}
 .leaflet-container{background:var(--bg);font:inherit}
 
-.panel{flex:1 1 45%;min-height:0;background:var(--panel);border-top:1px solid var(--line);display:flex;flex-direction:column}
-.bar{display:flex;flex-wrap:wrap;align-items:center;gap:8px 10px;padding:10px max(16px,env(safe-area-inset-right,0px)) 10px max(16px,env(safe-area-inset-left,0px));border-bottom:1px solid var(--line)}
-.bar h1{font:700 22px/1 var(--display);letter-spacing:.02em;margin:0;text-transform:uppercase}
-.bar .mode{font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;padding:3px 7px;border-radius:4px;background:var(--line);color:var(--muted)}
+.panel{flex:1 1 62%;min-height:0;background:var(--panel);border-top:1px solid var(--line);display:flex;flex-direction:column}
+.bar{display:flex;align-items:center;gap:8px;padding:8px max(16px,env(safe-area-inset-right,0px)) 4px max(16px,env(safe-area-inset-left,0px))}
+/* Acciones en una sola fila; si no caben, se desliza en horizontal (no salta de línea) */
+.tools{display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;padding:4px max(16px,env(safe-area-inset-right,0px)) 10px max(16px,env(safe-area-inset-left,0px));border-bottom:1px solid var(--line)}
+.tools::-webkit-scrollbar{display:none}
+.tools button{flex:0 0 auto}
+.bar,.tools,.note{flex-shrink:0}   /* la lista se encoge y se desplaza; la barra y los botones, nunca */
+.iconbtn{flex:0 0 40px;width:40px;padding:0;font-size:18px}
+.bar h1{font:700 22px/1 var(--display);letter-spacing:.02em;margin:0;text-transform:uppercase;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bar .mode,.bar .ring{flex-shrink:0}
+.bar .mode{white-space:nowrap;font-size:12px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;padding:3px 7px;border-radius:4px;background:var(--line);color:var(--muted)}
 .bar .mode.live{background:var(--ok);color:#fff}
 .spacer{flex:1}
 .ring{width:30px;height:30px;position:relative}
 .ring svg{transform:rotate(-90deg)}
 .ring span{position:absolute;inset:0;display:grid;place-items:center;font:600 10px var(--body);color:var(--muted);font-variant-numeric:tabular-nums}
-button{font:600 13px var(--body);color:var(--fg);background:transparent;border:1px solid var(--line);border-radius:6px;padding:7px 10px;cursor:pointer}
+/* Botones de al menos 40 px de alto: cómodos de pulsar con el dedo */
+button{font:600 14px var(--body);color:var(--fg);background:transparent;border:1px solid var(--line);border-radius:8px;padding:0 14px;min-height:40px;cursor:pointer;touch-action:manipulation}
 button:hover{border-color:var(--muted)}
 button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
 button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 
 .list{overflow-y:auto;padding:4px max(16px,env(safe-area-inset-right,0px)) calc(12px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px))}
 .stophead{display:flex;align-items:center;gap:8px;margin:16px 0 2px}
-.stophead .alias{font:700 19px/1.1 var(--display);letter-spacing:.03em;text-transform:uppercase;color:var(--fg);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.stophead .alias{font:700 19px/1.1 var(--display);letter-spacing:.03em;text-transform:uppercase;color:var(--fg);min-width:0;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
 .stophead .star{color:var(--warn);font-size:15px}
-.stophead .edit{margin-left:auto;padding:4px 8px;font-size:12px}
-.stopsub{font-size:12px;color:var(--muted);margin:0 0 4px}
+.stophead .edit{margin-left:auto;padding:0 12px;min-height:36px;font-size:13px}
+.stopsub{font-size:13px;color:var(--muted);margin:0 0 4px}
 .next{color:var(--muted);font-variant-numeric:tabular-nums}
 .chip.go{color:var(--ok)} .chip.late{color:var(--muted)}
 .stale{display:block;color:var(--warn);font-weight:600}
@@ -108,13 +117,16 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
 .row:last-child{border-bottom:0}
 .badge{font:700 22px/1 var(--display);color:#fff;border-radius:6px;padding:7px 0;text-align:center}
 .dest{min-width:0}
-.dest b{display:block;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.dest small{color:var(--muted);font-variant-numeric:tabular-nums}
+.dest b{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;font-weight:600;line-height:1.25}
+.dest small{color:var(--muted);font-size:13px;font-variant-numeric:tabular-nums}
 .eta{text-align:right}
 .eta strong{display:block;font:700 26px/1 var(--display);font-variant-numeric:tabular-nums}
-.chip{display:inline-block;margin-top:3px;font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase}
+.chip{display:inline-block;margin-top:3px;font-size:12px;font-weight:600;letter-spacing:.04em;text-transform:uppercase}
 .chip.now{color:var(--now)} .chip.near{color:var(--warn)} .chip.far{color:var(--ok)}
 .empty,.err{color:var(--muted);padding:18px 0}
+/* Pista para descubrir "cuándo salir": solo si ninguna parada tiene minutos andando */
+.tip{margin:12px 0 4px;padding:12px 14px;border:1px dashed var(--line);border-radius:10px;font-size:14px;display:flex;gap:12px;align-items:center}
+.tip p{margin:0;flex:1}
 .err{color:var(--now)}
 .note.busy::before{content:"";display:inline-block;width:10px;height:10px;margin-right:8px;border:2px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite;vertical-align:-1px}
 @keyframes spin{to{transform:rotate(360deg)}}
@@ -149,20 +161,22 @@ input,select{font:15px var(--body);color:var(--fg);background:var(--bg);border:1
 <section class="panel">
   <div class="bar">
     <h1>Marquesina</h1>
-    <span class="mode" id="mode">Cargando</span>
+    <span class="mode" id="mode" role="status" aria-live="polite">Cargando</span>
     <span class="spacer"></span>
-    <div class="ring" title="Próxima actualización">
+    <div class="ring" title="Segundos hasta la próxima actualización" aria-hidden="true">
       <svg width="30" height="30" viewBox="0 0 30 30"><circle cx="15" cy="15" r="12" fill="none" stroke="var(--line)" stroke-width="3"/><circle id="ringFg" cx="15" cy="15" r="12" fill="none" stroke="var(--accent)" stroke-width="3" stroke-dasharray="75.4" stroke-dashoffset="0"/></svg>
       <span id="ringTxt">60</span>
     </div>
-    <button id="btnRefresh" aria-label="Actualizar ahora">↻</button>
-    <button id="btnNear" title="Usar mi ubicación para cargar las paradas más cercanas">Cerca de mí</button>
-    <button id="btnFind" aria-pressed="false" title="Muestra las paradas de la zona que ves en el mapa">Buscar paradas</button>
-    <button id="btnZone" title="Ir a un municipio">Zona</button>
-    <button id="btnInstall" hidden>Instalar</button>
-    <button id="btnCfg">Ajustes</button>
+    <button id="btnRefresh" class="iconbtn" aria-label="Actualizar ahora" title="Actualizar ahora">↻</button>
+    <button id="btnCfg" class="iconbtn" aria-label="Ajustes" title="Ajustes">⚙</button>
   </div>
-  <p class="err note" id="note" hidden></p>
+  <div class="tools" role="toolbar" aria-label="Añadir paradas">
+    <button id="btnNear" title="Usar mi ubicación para cargar las paradas más cercanas">📍 Cerca de mí</button>
+    <button id="btnZone" title="Ir a un municipio">Zona</button>
+    <button id="btnFind" aria-pressed="false" title="Muestra las paradas de la zona que ves en el mapa">Buscar paradas</button>
+    <button id="btnInstall" hidden>Instalar</button>
+  </div>
+  <p class="err note" id="note" role="status" aria-live="polite" hidden></p>
   <div class="list" id="list"><p class="empty">Cargando…</p></div>
   <script>
     // Red de seguridad: si en 15 s la web no ha arrancado (por ejemplo, un archivo viejo en caché o sin
@@ -274,7 +288,7 @@ input,select{font:15px var(--body);color:var(--fg);background:var(--bg);border:1
 <script type="module">
 import { asArray, esc, crtmCode, fmtEta, status, fmtDist, fmtAge, parseEmt, parseCrtmTimes, parseCrtmVehicles,
          groupByLine, leaveInfo, bestLeave, parseNearest, parseEmtNear, mergeStops, stopNetwork,
-         shareParam, parseShareParam } from "./logic.js?v=7";   // ?v=7: salta copias viejas de antes de la v7 (INC-8)
+         shareParam, parseShareParam, prettyName } from "./logic.js?v=7";   // ?v=7: salta copias viejas de antes de la v7 (INC-8)
 import { unb64url } from "./push.js?v=7";
 
 // =====================================================================================================
@@ -355,7 +369,7 @@ const map = L.map("map",{zoomControl:true}).setView([40.4168,-3.7038],15);
 L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,attribution:"© OpenStreetMap"}).addTo(map);
 const layerStops = L.layerGroup().addTo(map);
 const busMarkers = new Map();   // clave bus -> {marker, trail, seen}
-let fitted = false;
+let fitted = false, centered = false;
 
 // Recuadro del bus; dx/dy lo desplazan para que no se pisen los que están en el mismo sitio
 function busIcon(line, mode, dx = 0, dy = 0){
@@ -461,26 +475,31 @@ function heroHtml(stops){
   const now = li.leave <= 60;
   return `<div class="hero${now ? " now" : ""}">
     <div class="badge" style="background:${colorFor(g.line, g.mode)}">${esc(g.line)}</div>
-    <div class="what"><b>${esc(m.alias || s.name)}</b>${esc(g.dest)} · pasa en ${fmtEta(li.bus.eta).txt} min</div>
+    <div class="what"><b>${esc(m.alias || s.name)}</b>${esc(prettyName(g.dest))} · pasa en ${fmtEta(li.bus.eta).txt} min</div>
     <div class="when">${now ? "¡Ya!" : Math.floor(li.leave/60) + "′"}<small>${now ? "sal ahora" : "para salir"}</small></div>
   </div>`;
 }
 
 function renderList(){
   const el = document.getElementById("list");
-  if (!last.length){ el.innerHTML = '<p class="empty">Aún no tienes paradas. Añade una con <b>Cerca de mí</b>, <b>Zona</b> o <b>Buscar paradas</b>.</p>'; return; }
+  if (!last.length){ el.innerHTML = '<p class="empty">Aún no tienes paradas. Añade una con <b>Cerca de mí</b>, <b>Zona</b> o <b>Buscar paradas</b>.</p>'; el.dataset.html = ""; return; }
   // favoritas primero, el resto en el orden en que se añadieron
   const ordered = last.map((s,i)=>({s,i})).sort((a,b)=>((metaOf(b.s).fav?1:0)-(metaOf(a.s).fav?1:0)) || a.i-b.i).map(x=>x.s);
-  el.innerHTML = (isLive() ? heroHtml(ordered) : "") + ordered.map(s=>{
+  // Pista: si ninguna parada tiene minutos andando, nadie descubre "Sal en X min" (lo más útil)
+  const first = ordered.find(s=>!s.error);
+  const tip = isLive() && first && !ordered.some(s=>metaOf(s).walk)
+    ? `<div class="tip"><p>¿Cuánto tardas andando a <b>${esc(metaOf(first).alias || prettyName(first.name))}</b>? Dímelo y te digo cuándo salir de casa.</p><button class="primary" data-edit="${esc(stopKey(first))}" data-name="${esc(first.name)}">Ponerlo</button></div>`
+    : "";
+  const html = (isLive() ? heroHtml(ordered) : "") + tip + ordered.map(s=>{
     if (s.error) return `<p class="err">${esc(s.error)}</p>`;
     const m = metaOf(s);
     const rows = groupByLine(s.buses, elapsedOf(s)).map(g=>{
       const first = g.items[0], e = fmtEta(first.eta);
-      const more = g.items.slice(1,3).map(b=>fmtEta(b.eta).txt + "′").join(" · ");
+      const more = g.items.slice(1,3).map(b=>fmtEta(b.eta).txt).join(" y ") + (g.items.length > 1 ? " min" : "");
       const detail = s.crtm ? (first.mode === "4" ? "Próximo tren" : first.live ? "En directo (GPS)" : "Según horario") : (fmtDist(first.dist) || "sin posición");
       return `<div class="row" data-key="${esc(first.key)}" data-line="${esc(g.line)}" data-stop="${esc(s.id)}">
         <div class="badge" style="background:${colorFor(g.line, g.mode)}">${esc(g.line)}</div>
-        <div class="dest"><b>${esc(g.dest)}</b><small>${detail}${more ? ` · <span class="next">luego ${more}</span>` : ""}</small></div>
+        <div class="dest"><b>${esc(prettyName(g.dest))}</b><small>${detail}${more ? ` · <span class="next">luego ${more}</span>` : ""}</small></div>
         <div class="eta"><strong>${e.txt}<small style="font-size:13px"> ${e.unit}</small></strong>${chipFor(g, m.walk)}</div>
       </div>`;
     }).join("") || (s.crtm
@@ -492,6 +511,9 @@ function renderList(){
     return `<div class="stophead">${m.fav ? '<span class="star" aria-label="Favorita">★</span>' : ""}<span class="alias">${esc(m.alias || s.name)}</span>${cfg.alerts[stopKey(s)]?.on ? '<span class="bell" title="Aviso activado" aria-label="Aviso activado">🔔</span>' : ""}${editBtn}</div>
       <p class="stopsub">${sub}</p>${rows}`;
   }).join("");
+  // Se llama cada segundo: solo se toca la página si algo ha cambiado. Si no, el botón que estás
+  // pulsando desaparecería a mitad del toque y el toque se perdería.
+  if (html !== el.dataset.html){ el.innerHTML = html; el.dataset.html = html; }
 }
 
 function renderMap(){
@@ -506,7 +528,7 @@ function renderMap(){
         const next = s.buses.slice().sort((a,b)=>a.eta-b.eta).slice(0,3)
           .map(b=>`<b style="color:${colorFor(b.line, b.mode)}">${esc(b.line)}</b> ${fmtEta(b.eta).txt}′`).join(" · ");
         mk.bindTooltip(next || esc(metaOf(s).alias || s.name),{permanent:true,direction:"top",offset:[0,-10]});
-        mk.bindPopup(`<b>${s.name}</b><br>Parada ${s.id}`);
+        mk.bindPopup(`<b>${esc(s.name)}</b><br>Parada ${esc(s.id)}`);
       } else mk.bindTooltip(s.name);
     }
     for (const b of [...s.buses, ...(s.vehicles||[])]){
@@ -605,6 +627,8 @@ async function doRefresh(){
       results[i] = settle(r, j.key);
       last = results.filter(Boolean);
       renderList();   // el mapa se redibuja al final, para encuadrar con todas las paradas
+      // …pero se lleva ya a la primera parada que llegue, para no enseñar Sol mientras tanto
+      if (!fitted && !centered && results[i].pos){ map.setView(results[i].pos, 15); centered = true; }
     })));
     last = results.filter(Boolean);
   }

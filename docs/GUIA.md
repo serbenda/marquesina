@@ -368,11 +368,23 @@ flowchart LR
 
 ## 7. Montarlo todo desde cero, paso a paso
 
-Así sería montar marquesina en otra cuenta o volver a montarla si se perdiera todo. El orden importa:
+Así sería montar marquesina en otra cuenta o volver a montarla si se perdiera todo. El orden importa.
+
+> ⚠️ **Si lo montas en OTRA cuenta** (no la de `serbenda`), hay valores escritos en el código que tienes que cambiar por los tuyos antes de nada:
+>
+> | Dónde | Qué cambiar |
+> |---|---|
+> | `wrangler.toml` | `account_id` (tu ID de cuenta de Cloudflare: panel → *Workers* → a la derecha) y `pattern = "api.bendi.dev"` |
+> | `index.html` | `PROXIES` (tus tres direcciones) |
+> | `worker.js` y `relay/relay.js` | `ALLOWED_ORIGINS` (el dominio de tu web) y, en el repetidor, `UPSTREAMS` |
+> | `.github/workflows/healthcheck.yml` y `worker.yml` | Las direcciones que comprueban |
+> | `tests/e2e/web.e2e.mjs` | `WORKER_HOSTS`, `CLOUDFLARE_HOSTS` y `RELAY` |
+> | `sw.js` | Los dominios que nunca se guardan (`api.bendi.dev`, `.deno.net`) |
+
 
 ```mermaid
 flowchart TB
-  F0["Fase 0<br/>Qué necesitas"] --> F1["Fase 1<br/>GitHub: cuenta y repo"]
+  F0["Fase 0<br/>Qué necesitas"] --> F1["Fase 1<br/>GitHub: cuenta, repo<br/>y protección de main"]
   F1 --> F2["Fase 2<br/>Publicar la web<br/>(GitHub Pages)"]
   F2 --> F3["Fase 3<br/>Cloudflare: cuenta y worker"]
   F3 --> F4["Fase 4<br/>EMT: Mobility Labs"]
@@ -389,25 +401,38 @@ flowchart TB
 - Un ordenador con un navegador moderno (Chrome, Edge, Firefox o Safari).
 - Un correo electrónico.
 - El dominio `bendi.dev` (o el tuyo), comprado en un registrador como Porkbun.
-- Unos **90 minutos** la primera vez. Después, casi todo es automático.
+- Unos **2 horas** la primera vez, más la espera del cambio de DNS. Después, casi todo es automático.
 
 ---
 
-### Fase 1 · GitHub: cuenta y repositorio (15 min)
+### Fase 1 · GitHub: cuenta, repositorio y protección (20 min)
 
-**Objetivo:** tener el código guardado en GitHub con las dos ramas, `main` y `development`.
+**Objetivo:** tener el código guardado en GitHub con las dos ramas, `main` y `development`, y `main` protegida.
 
 1. 🖱️ Entra en https://github.com y pulsa **Sign up** si no tienes cuenta. Sigue los pasos (correo, contraseña, usuario).
 2. 🖱️ Arriba a la derecha, pulsa **+** → **New repository**.
 3. ⌨️ En **Repository name** escribe `marquesina`.
 4. 🖱️ Marca **Public** (GitHub Pages gratis necesita repos públicos).
 5. 🖱️ Marca **Add a README file** y pulsa **Create repository**.
-6. Sube los archivos del proyecto: 🖱️ **Add file** → **Upload files**, arrastra todo el contenido de la carpeta del proyecto y pulsa **Commit changes**.
+6. Sube los archivos del proyecto. Lo más fiable es con Git desde tu ordenador (`git clone`, copiar los archivos, `git add -A`, `git commit`, `git push`).
+   - Si lo haces desde la web (🖱️ **Add file** → **Upload files**), ⚠️ la carpeta **`.github`** está oculta en Finder y en el Explorador de Windows: actívalo para ver archivos ocultos (Mac: **Cmd + Shift + .**; Windows: *Vista → Elementos ocultos*) o los robots no se subirán.
+   - Es normal que, al subirlo, *Desplegar worker* y *Publicar en GitHub Pages* salgan en rojo: aún no existen el token ni Pages. Se arreglan en las fases 2 y 6.
 7. Crea la rama de trabajo: 🖱️ pulsa el selector de ramas (pone `main`) → ⌨️ escribe `development` → 🖱️ **Create branch: development from main**.
 
 ✅ **Bien si:** en la página del repo ves `index.html`, `worker.js`, `docs/`… y el selector de ramas tiene `main` y `development`.
 
 ⚠️ **Regla de oro:** nunca se cambia nada directamente en `main`. Siempre en `development` y luego una Pull Request (ver §8).
+
+8. **Protege `main`** para que la regla de oro no dependa de acordarse:
+   1. 🖱️ Repo → **Settings** → **Branches** → **Add branch protection rule** (o *Add classic branch protection rule*).
+   2. ⌨️ **Branch name pattern:** `main`.
+   3. 🖱️ Marca **Require a pull request before merging** y **desmarca** *Require approvals* (si eres la única persona, GitHub no te deja aprobar tus propias PR).
+   4. 🖱️ Marca **Require status checks to pass before merging** → en el buscador escribe `test` y elígelo. (Solo aparece si el robot *Tests* se ha ejecutado alguna vez esta semana.)
+   5. Deja sin marcar *Allow force pushes* y *Allow deletions*.
+   6. 🖱️ **Create**. GitHub te pedirá confirmar tu identidad (*Confirm access*).
+9. **Activa la verificación en dos pasos** en GitHub (*Settings → Password and authentication*), y más adelante también en Cloudflare y en el registrador del dominio.
+
+✅ **Bien si:** en **Settings → Branches** aparece la regla `main`.
 
 ---
 
@@ -536,7 +561,7 @@ flowchart TB
   C --> D["4 · En Porkbun:<br/>cambiar nameservers"]
   D --> E["5 · Esperar 'Active'<br/>(minutos a horas)"]
   E --> F["6 · Comprobar que bendi.dev<br/>sigue igual"]
-  F --> G["7 · Fusionar la PR de api.bendi.dev"]
+  F --> G["7 · Desplegar el worker<br/>(fase 8: Run workflow)"]
 ```
 
 **1. Anotar los registros actuales** (para comprobar que no se pierde ninguno):
@@ -585,7 +610,7 @@ Para verlos tú mismo, abre `https://dns.google/resolve?name=bendi.dev&type=A` (
 - `https://bendi.dev` y `https://bendi.dev/marquesina/` cargan con el candado 🔒 del navegador.
 - GitHub → repo `serbenda.github.io` → **Settings → Pages**: debe seguir poniendo *DNS check successful*.
 
-**7. Fusionar la PR de `api.bendi.dev`** (solo con *Active*). Al fusionarla, el robot crea `api.bendi.dev` en Cloudflare y espera hasta 5 min a que tenga certificado.
+**7. Desplegar el worker** (solo con la zona en *Active*): sigue la fase 8 (**Run workflow** de *Desplegar worker en Cloudflare*). El robot crea `api.bendi.dev` en Cloudflare y espera hasta 5 min a que tenga certificado. Si lanzas el despliegue antes de *Active*, el worker se publica pero la comprobación final falla con `Could not resolve host`: espera y vuelve a lanzarlo.
 
 ✅ **Bien si:** `https://api.bendi.dev/push/key` muestra un texto que empieza por `{"publicKey":`.
 
@@ -704,9 +729,9 @@ Más abajo, en la misma pantalla:
 | https://marquesina.serbenda.deno.net/push/key | `{"publicKey":"…"}`, **la misma** que en https://api.bendi.dev/push/key |
 | https://marquesina.serbenda.deno.net/crtm/stop/06756 | Texto largo con `stopTimes` |
 
-✅ **Bien si:** salen las tres. A partir de ahí, Deno vuelve a publicar el repetidor solo cada vez que cambia `main`, y el chequeo horario lo vigila.
+✅ **Bien si:** salen las tres. A partir de ahí, Deno vuelve a publicar el repetidor solo cada vez que cambia `main`, y el chequeo horario lo vigila. Cada cambio en `development` crea además una versión de prueba que no afecta a la web.
 
-ℹ️ Si la dirección que te da Deno **no** es `marquesina.serbenda.deno.net`, hay que cambiarla en `index.html` (`PROXIES`), en `.github/workflows/healthcheck.yml` y en [RESPALDO.md](RESPALDO.md).
+ℹ️ Si la dirección que te da Deno **no** es `marquesina.serbenda.deno.net`, hay que cambiarla en `index.html` (`PROXIES`), en los dos pasos del repetidor de `.github/workflows/healthcheck.yml`, en `tests/e2e/web.e2e.mjs` (`RELAY` y `WORKER_HOSTS`) y en la documentación. La lista completa está en [RESPALDO.md](RESPALDO.md), paso 2.
 
 Toda la explicación técnica está en [RESPALDO.md](RESPALDO.md).
 
@@ -765,7 +790,7 @@ flowchart TB
   Q6 -- "No" --> A3["Tu red bloquea algo.<br/>Revisa Pi-hole/AdGuard/router.<br/>Ver DOMINIO.md"]
   Q3 -- "No" --> Q4{"¿Responde<br/>api.bendi.dev/push/key?"}
   Q4 -- "No" --> A4["Worker caído:<br/>Actions → 'Desplegar worker' → Run workflow.<br/>Revisar logs en Cloudflare"]
-  Q4 -- "Sí" --> A5["El fallo es de EMT o del Consorcio:<br/>MANTENIMIENTO.md §5"]
+  Q4 -- "Sí" --> A5["El fallo es de EMT o del Consorcio:<br/>EMT → MANTENIMIENTO.md §5<br/>Consorcio → OPERACIONES.md R4"]
   Q2 -- "En vivo, pero una<br/>parada da error" --> Q5{"¿Es de EMT<br/>o del Consorcio?"}
   Q5 -- "EMT" --> A6["Abrir api.bendi.dev/emt/arrives/NÚMERO<br/>Código 84 o 80 → secretos de EMT<br/>(MANTENIMIENTO §1.4 y §5)"]
   Q5 -- "Consorcio" --> A7["Suele ser temporal:<br/>se muestran los últimos datos<br/>'Sin datos nuevos · son de hace N min'"]
@@ -815,6 +840,7 @@ flowchart LR
     R2["worker.yml · publica el worker"]
     R3["tests.yml · prueba cada PR"]
     R4["healthcheck.yml · revisa cada hora"]
+    R5["e2e.yml · prueba en navegador"]
   end
   subgraph Pruebas["Pruebas"]
     TT["tests/ + fixtures/"]

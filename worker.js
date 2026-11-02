@@ -166,7 +166,7 @@ async function emtNear(lat, lon, radius, env, ctx) {
   return data;
 }
 
-// Llegadas de EMT con caché de 20 s compartida (web y avisos)
+// Llegadas de EMT con caché de 10 s (CACHE_SECONDS) compartida (web y avisos)
 async function emtArrivalsCached(stop, env, ctx) {
   const cache = globalThis.caches && caches.default;
   const key = new Request(`https://cache.marquesina/emt/${stop}`);

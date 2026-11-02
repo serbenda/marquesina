@@ -26,6 +26,8 @@ Las horas son de Madrid. Cada paso enlaza a su Pull Request (PR) en GitHub, dond
 - [Fase 9 · "No se puede conectar": el dominio propio](#fase-9--no-se-puede-conectar-el-dominio-propio-1-nov-1823)
 - [Fase 10 · Documentación y buenas prácticas](#fase-10--documentación-y-buenas-prácticas-1-nov-1836--1906)
 - [Fase 11 · El bloqueo del fútbol y el repetidor](#fase-11--el-bloqueo-del-fútbol-y-el-repetidor-1-nov-1931--2009)
+- [Fase 12 · Vigilancia de verdad y mejoras de uso](#fase-12--vigilancia-de-verdad-y-mejoras-de-uso-1-nov-2056)
+- [Fase 13 · Protección, un fallo de caché y revisión de experiencia de uso](#fase-13--protección-un-fallo-de-caché-y-revisión-de-experiencia-de-uso-1-y-2-nov)
 - [Registro de decisiones](#registro-de-decisiones)
 - [Lo que se configuró fuera del código](#lo-que-se-configuró-fuera-del-código)
 - [Lecciones aprendidas](#lecciones-aprendidas)
@@ -55,10 +57,10 @@ timeline
 
 ```mermaid
 flowchart LR
-  V1["v1 · Prototipo<br/>web sola"] --> V2["v2 · Web + worker<br/>Cloudflare"]
-  V2 --> V3["v3 · + avisos<br/>Durable Object + cron"]
-  V3 --> V4["v4 · + dominio propio<br/>DNS en Cloudflare"]
-  V4 --> V5["v5 · + repetidor<br/>Deno Deploy"]
+  V1["Etapa 1 · Prototipo<br/>web sola"] --> V2["Etapa 2 · Web + worker<br/>Cloudflare"]
+  V2 --> V3["Etapa 3 · + avisos<br/>Durable Object + cron"]
+  V3 --> V4["Etapa 4 · + dominio propio<br/>DNS en Cloudflare"]
+  V4 --> V5["Etapa 5 · + repetidor<br/>Deno Deploy"]
 ```
 
 ---
@@ -308,7 +310,7 @@ flowchart LR
   R -- "✅" --> A
 ```
 
-**Incidente posterior (20:22):** con el bloqueo, *Zona* y *Buscar paradas* casi no traían nada. Deno Deploy rechaza las rutas que acaban en `.php`, y la búsqueda del Consorcio era una de ellas. Se cambió la web para pedirla sin `.php` y se añadió un chequeo real por Deno ([OPERACIONES.md](OPERACIONES.md), INC-6).
+**Incidente posterior (20:22):** con el bloqueo, *Zona* y *Buscar paradas* casi no traían nada. Deno Deploy rechaza las rutas que acaban en `.php`, y la búsqueda del Consorcio era una de ellas. Se cambió la web para pedirla sin `.php` y se añadió un chequeo real por Deno ([PR #26](https://github.com/serbenda/marquesina/pull/26); [OPERACIONES.md](OPERACIONES.md), INC-6). Al comprobarlo en 10 localidades, la búsqueda del Consorcio resultó ser lenta (4–10 s): se guardó 1 día en el worker y se le dio más margen ([PR #27](https://github.com/serbenda/marquesina/pull/27) y [PR #28](https://github.com/serbenda/marquesina/pull/28); INC-7).
 
 **Lo que enseña:**
 - **Diagnosticar por capas** (nombre → DNS → IP → conexión). La primera causa encontrada (fase 9) era real, pero no era toda la historia.
@@ -319,6 +321,8 @@ flowchart LR
 
 ## Fase 12 · Vigilancia de verdad y mejoras de uso (1 nov, 20:56)
 
+[PR #29](https://github.com/serbenda/marquesina/pull/29).
+
 Tras la prueba de campo en 10 localidades ([OPERACIONES.md](OPERACIONES.md), después de INC-7), lo que quedaba por mejorar sin tocar las cuentas del dueño:
 
 1. **Prueba en navegador** (`e2e.yml`): Chromium de verdad contra los servicios reales, con un **bloqueo de Cloudflare simulado**. Es la prueba que habría detectado INC-6 antes de que lo viera el usuario.
@@ -327,6 +331,15 @@ Tras la prueba de campo en 10 localidades ([OPERACIONES.md](OPERACIONES.md), des
 4. **Compartir paradas por enlace**, solo con los códigos.
 
 Al montar la prueba se aprendieron dos cosas útiles: `ubuntu-latest` ya era Ubuntu 26.04 y Playwright aún no lo admitía (se fijó 24.04), y en las expresiones de GitHub Actions un texto vacío cuenta como falso.
+
+---
+
+## Fase 13 · Protección, un fallo de caché y revisión de experiencia de uso (1 y 2 nov)
+
+1. **`main` protegida** (1 nov, 21:20): PR obligatoria y check `test` en verde, sin borrado ni *force push*. Se configuró desde el navegador del dueño; guardarla pidió confirmar con el 2FA de GitHub, que quedó comprobado ([MANTENIMIENTO.md §3.5](MANTENIMIENTO.md)).
+2. **INC-8** (2 nov, mañana): tras publicar la PR #29, la web se quedaba en *Cargando…* para quien ya la había usado, porque el service worker servía un `logic.js` viejo. Arreglo: todo lo nuestro "primero red", `import` con `?v=7`, aviso de *Recargar* y prueba en navegador que falla ante cualquier error de JavaScript ([PR #30](https://github.com/serbenda/marquesina/pull/30); [OPERACIONES.md](OPERACIONES.md), INC-8).
+3. **Revisión de experiencia de uso** en un móvil de 375 px. Hallazgos y cambios en [UX.md](UX.md): la lista pasa a ocupar más que el mapa; acciones en una fila; botones de 40 px; destinos legibles; el toque en *Editar* ya no se pierde; pista para descubrir "cuándo salir".
+4. **Revisión completa de la documentación** contra el código por un revisor independiente: unas 70 correcciones (datos desfasados, contradicciones entre documentos y pasos que un principiante no podría seguir).
 
 ---
 
@@ -370,6 +383,8 @@ Lo que **no está en el repositorio** y habría que repetir a mano si se perdier
 | Mobility Labs | Aplicación `marquesina` con su icono | Dueño |
 | Deno Deploy | Organización `serbenda`, app `marquesina` (Dynamic, `relay/main.js`) | Dueño |
 | GitHub · Notifications | Email solo para workflows que fallan | Dueño |
+| GitHub · Settings → Branches | Protección de `main`: PR obligatoria, check `test`, sin borrado ni *force push* | Dueño (confirmado con 2FA) |
+| GitHub · cuenta | Verificación en dos pasos (GitHub Mobile) | Dueño |
 
 ---
 
@@ -390,6 +405,8 @@ Lo que **no está en el repositorio** y habría que repetir a mano si se perdier
 
 | Qué | Por qué | Prioridad |
 |---|---|---|
+| Activar la verificación en dos pasos en Porkbun | Quien controle esa cuenta controla el dominio `bendi.dev` | **Alta** |
+| Comprobar el 2FA de Cloudflare | Controla el worker, los avisos y el DNS | Media |
 | Borrar la rama `diagnostico` | Quedó de las pruebas de la fase 9 | Baja |
 | Elegir una licencia | Sin licencia, nadie puede reutilizar el código legalmente | Baja |
 | Límite de peticiones por usuario en el worker | Protección frente a abusos (ver [SEGURIDAD.md](SEGURIDAD.md)) | Baja |
