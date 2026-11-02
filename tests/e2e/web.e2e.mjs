@@ -46,6 +46,7 @@ function serveRepo() {
 
 // ---------- Utilidades ----------
 const results = [];
+const noErrors = page => check(!page.errors.length, `errores de JavaScript en la página: ${page.errors.join(" | ")}`);
 async function scenario(name, fn) {
   const t = Date.now();
   try { await fn(); results.push({ name, ok: true, ms: Date.now() - t }); console.log(`✅ ${name} (${((Date.now() - t) / 1000).toFixed(1)} s)`); }
@@ -71,7 +72,10 @@ async function newPage(browser, { base, local, block = false, label }) {
     } catch { await route.abort("failed"); }
   });
   const page = await context.newPage();
-  page.on("pageerror", e => console.log(`   [${label}] error en la página: ${e.message}`));
+  // Cualquier error de JavaScript en la página hace fallar el escenario (INC-8: un error de importación
+  // dejó la web en "Cargando…" sin que nada lo avisara)
+  page.errors = [];
+  page.on("pageerror", e => { page.errors.push(e.message); console.log(`   [${label}] error en la página: ${e.message}`); });
   return { page, context };
 }
 
@@ -114,6 +118,7 @@ await scenario("1 · Normal: en vivo y búsqueda en Alcobendas", async () => {
     await waitLive(page);
     const n = await searchZone(page, "Alcobendas");
     console.log(`   Alcobendas: ${n} paradas`);
+    noErrors(page);
   } catch (e) { await shot(page, "1-normal"); throw e; } finally { await context.close(); }
 });
 
@@ -126,6 +131,7 @@ await scenario("2 · Bloqueo simulado de Cloudflare: funciona por el repetidor",
     check(proxy === RELAY, `debería usar el repetidor y usa ${proxy}`);
     const n = await searchZone(page, "San Sebastián de los Reyes");
     console.log(`   Sanse por el repetidor: ${n} paradas`);
+    noErrors(page);
   } catch (e) { await shot(page, "2-bloqueo"); throw e; } finally { await context.close(); }
 });
 
@@ -141,6 +147,7 @@ await scenario("3 · Enlace compartido: añade las paradas y limpia la direcció
     // Cada parada se pinta en cuanto llega: hay que esperar a las dos
     await page.waitForFunction(() => document.querySelectorAll("#list .stophead").length === 2, null, { timeout: 30000 })
       .catch(async () => { throw new Error(`se esperaban 2 paradas en la lista y hay ${await page.locator("#list .stophead").count()}: ${(await page.locator("#list").innerText()).slice(0, 200)}`); });
+    noErrors(page);
   } catch (e) { await shot(page, "3-enlace"); throw e; } finally { await context.close(); }
 });
 

@@ -4,23 +4,25 @@
 //   A. Que la web se pueda instalar como app y abra al instante (guarda una copia de la app).
 //   B. Recibir los avisos "¡Sal ya!" aunque la web esté cerrada y enseñarlos como notificación.
 //
-// ⚠️ Si cambias logic.js, push.js o los iconos, sube VERSION (p. ej. "marquesina-v3"): si no, algunos
-//    móviles seguirán con la copia anterior. index.html no lo necesita (va "primero red").
+// Desde la v7, TODO lo nuestro (página, logic.js, push.js, iconos, manifest) va "primero red": con conexión
+// siempre se usa la última versión publicada y la copia solo sirve sin conexión. Antes logic.js iba
+// "primero caché" y, al publicar una versión nueva, la página nueva se juntaba con el logic.js viejo y la web
+// no arrancaba (docs/OPERACIONES.md, INC-8). Subir VERSION solo hace falta para vaciar las copias guardadas.
 //
 // Diagramas: docs/REFERENCIA.md §8 (caché) y §7.5 (notificaciones).
 //
 // Resumen de estrategias:
-// - La página (index.html) va "primero red": siempre la última versión si hay conexión, la guardada si no.
-// - Librerías, fuentes e iconos van "primero caché": no cambian.
+// - Lo nuestro (mismo origen) va "primero red": siempre la última versión si hay conexión, la guardada si no.
+// - Librerías externas con versión fija (Leaflet en cdnjs) y fuentes de Google van "primero caché": no cambian.
 // - Los datos de autobuses (worker de Cloudflare y repetidor de Deno) y las teselas del mapa NO se guardan: tienen que ser en vivo.
 // - Recibe los avisos programados (Web Push) y los muestra como notificación.
 
-const VERSION = "marquesina-v6";   // cambiarlo obliga a renovar la caché en todos los dispositivos
+const VERSION = "marquesina-v7";   // cambiarlo obliga a renovar la caché en todos los dispositivos
 const SHELL = [
   "./",
   "./manifest.webmanifest",
-  "./logic.js",
-  "./push.js",
+  "./logic.js?v=7",
+  "./push.js?v=7",
   "./assets/icono-192.png",
   "./assets/icono-512.png",
   "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css",
@@ -47,18 +49,21 @@ self.addEventListener("fetch", e => {
   // Datos en vivo y mapa: siempre de la red
   if (url.hostname.endsWith("workers.dev") || url.hostname === "api.bendi.dev" || url.hostname.endsWith(".deno.net") || url.hostname.endsWith("tile.openstreetmap.org")) return;
 
-  // La página: primero red, si falla la guardada
-  if (req.mode === "navigate") {
+  // Lo nuestro (la página y sus archivos): primero red, si falla la copia guardada
+  if (url.origin === location.origin) {
     e.respondWith(
       fetch(req)
-        .then(res => { const copy = res.clone(); caches.open(VERSION).then(c => c.put("./", copy)); return res; })
-        .catch(() => caches.match("./"))
+        .then(res => {
+          if (res.ok) { const copy = res.clone(); caches.open(VERSION).then(c => c.put(req.mode === "navigate" ? "./" : req, copy)); }
+          return res;
+        })
+        .catch(() => caches.match(req.mode === "navigate" ? "./" : req))
     );
     return;
   }
 
-  // Estáticos (mismo origen, cdnjs, Google Fonts): primero caché
-  if (url.origin === location.origin || /cdnjs\.cloudflare\.com|fonts\.(googleapis|gstatic)\.com/.test(url.hostname)) {
+  // Librerías y fuentes externas con versión fija: primero caché
+  if (/cdnjs\.cloudflare\.com|fonts\.(googleapis|gstatic)\.com/.test(url.hostname)) {
     e.respondWith(
       caches.match(req).then(hit => hit || fetch(req).then(res => {
         if (res.ok || res.type === "opaque") { const copy = res.clone(); caches.open(VERSION).then(c => c.put(req, copy)); }

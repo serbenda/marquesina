@@ -164,6 +164,16 @@ input,select{font:15px var(--body);color:var(--fg);background:var(--bg);border:1
   </div>
   <p class="err note" id="note" hidden></p>
   <div class="list" id="list"><p class="empty">Cargando…</p></div>
+  <script>
+    // Red de seguridad: si en 15 s la web no ha arrancado (por ejemplo, un archivo viejo en caché o sin
+    // conexión la primera vez), en vez de quedarse en "Cargando…" para siempre se ofrece recargar.
+    setTimeout(function () {
+      if (window.marquesinaArrancada) return;
+      var l = document.getElementById("list");
+      if (l) l.innerHTML = '<p class="err">No se ha podido cargar marquesina. Comprueba la conexión y vuelve a intentarlo.</p>' +
+        '<p><button onclick="location.reload()">Recargar</button></p>';
+    }, 15000);
+  </script>
 </section>
 
 <dialog id="cfg">
@@ -264,8 +274,8 @@ input,select{font:15px var(--body);color:var(--fg);background:var(--bg);border:1
 <script type="module">
 import { asArray, esc, crtmCode, fmtEta, status, fmtDist, fmtAge, parseEmt, parseCrtmTimes, parseCrtmVehicles,
          groupByLine, leaveInfo, bestLeave, parseNearest, parseEmtNear, mergeStops, stopNetwork,
-         shareParam, parseShareParam } from "./logic.js";
-import { unb64url } from "./push.js";
+         shareParam, parseShareParam } from "./logic.js?v=7";   // ?v=7: salta copias viejas de antes de la v7 (INC-8)
+import { unb64url } from "./push.js?v=7";
 
 // =====================================================================================================
 // Comportamiento de la web. Cada sección empieza con "// ---------- Nombre ----------".
@@ -909,6 +919,7 @@ function showNote(msg, {ms = 6000, busy = false} = {}){
   if (ms) noteTimer = setTimeout(()=>{ p.hidden = true; p.classList.remove("busy"); }, ms);
 }
 
+window.marquesinaArrancada = true;   // ver la red de seguridad junto a #list
 refresh();
 if (sharedNote) showNote(sharedNote);
 if (firstVisit) setTimeout(()=> introDlg.showModal(), 600);
