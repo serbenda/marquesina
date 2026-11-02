@@ -16,7 +16,7 @@ flowchart LR
   H --> I["Se publica solo"]
 ```
 
-1. **Nunca se trabaja en `main`.** Todo va a `development` y llega a `main` con una Pull Request que fusiona el dueño del repo.
+1. **Nunca se trabaja en `main`** (además, GitHub lo impide: `main` está protegida y solo acepta PR con el check `test` en verde). Todo va a `development` y llega a `main` con una Pull Request que fusiona el dueño del repo.
 2. **Un cambio, un propósito.** Mejor varias PR pequeñas que una enorme.
 3. **Antes de cada commit:** `npm test` en verde (Node 22, sin instalar nada).
 4. **Autoría:** los commits van firmados como `Sergio Santiago Bendaña Quesada <serbenda@gmail.com>`, sin coautores.
@@ -35,6 +35,7 @@ En español, en presente y diciendo **qué cambia para quien usa la web**:
 - [ ] `npm test` pasa.
 - [ ] Si cambia `logic.js`: hay un test nuevo o actualizado en `tests/logic.test.js`.
 - [ ] Si cambia `worker.js`: hay un test en `tests/worker.test.js` y la ruta funciona (`/push/key`, `/crtm/stop/06756`, `/emt/arrives/69`).
+- [ ] Si cambia `relay/`: hay un test en `tests/relay.test.js`.
 - [ ] Si cambia `sw.js`: la estrategia sigue siendo "primero red" para lo nuestro (ver [REFERENCIA §8](docs/REFERENCIA.md#8-el-service-worker-swjs)).
 - [ ] Si cambia una ruta, un límite, un secreto o un paso de configuración: la documentación está al día ([REFERENCIA](docs/REFERENCIA.md), [GUIA](docs/GUIA.md), [MANTENIMIENTO](docs/MANTENIMIENTO.md)).
 - [ ] Hay una línea nueva en [CHANGELOG.md](CHANGELOG.md).

@@ -26,7 +26,8 @@ Web estática (GitHub Pages) que muestra en tiempo real los autobuses de la Comu
 1. **No hacer commits en `main`.** Trabajar en `development` y abrir una PR a `main`; la fusiona el dueño.
 2. **Autoría de los commits:** `Sergio Santiago Bendaña Quesada <serbenda@gmail.com>`, sin coautores ni menciones a herramientas de IA en commits, PR ni archivos.
 3. **Ningún secreto en el repo.** Las claves de EMT están en Cloudflare y el token de despliegue en GitHub. Nunca escribirlas, pedirlas en texto ni ponerlas en ejemplos.
-4. **`npm test` en verde** antes de cada commit. Si cambias `logic.js` o `worker.js`, añade o ajusta un test.
+4. **`npm test` en verde** antes de cada commit. Si cambias `logic.js`, `worker.js` o `relay/`, añade o ajusta un test (`tests/logic.test.js`, `tests/worker.test.js`, `tests/relay.test.js`).
+   **`main` está protegida:** solo entra por PR y con el check `test` en verde.
 5. **No hace falta subir `VERSION` en `sw.js` por cambiar `logic.js` o `push.js`:** desde la v7 todo lo nuestro va "primero red" (INC-8). Si cambias el nombre de lo que exporta un módulo, comprueba que la *Prueba en navegador* de la PR pasa.
 6. **Sin dependencias ni pasos de compilación** salvo que el dueño lo pida.
 7. **La documentación forma parte del cambio:** actualiza `docs/` y `CHANGELOG.md` en la misma PR.
@@ -35,7 +36,9 @@ Web estática (GitHub Pages) que muestra en tiempo real los autobuses de la Comu
 
 ```bash
 npm test                         # tests (Node 22)
-node --check worker.js           # sintaxis
+npm run check                    # sintaxis de todos los archivos JavaScript
+# prueba en navegador, como en GitHub (Chromium real contra los servicios reales):
+npm i --no-save --no-package-lock playwright@1.55.0 && npx playwright install --with-deps chromium && node tests/e2e/web.e2e.mjs
 python3 -m http.server 8000      # ver la web en local: http://localhost:8000
 ```
 

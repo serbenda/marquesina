@@ -12,6 +12,7 @@
 [![Web](https://github.com/serbenda/marquesina/actions/workflows/pages.yml/badge.svg)](https://github.com/serbenda/marquesina/actions/workflows/pages.yml)
 [![Worker](https://github.com/serbenda/marquesina/actions/workflows/worker.yml/badge.svg)](https://github.com/serbenda/marquesina/actions/workflows/worker.yml)
 [![Chequeo horario](https://github.com/serbenda/marquesina/actions/workflows/healthcheck.yml/badge.svg)](https://github.com/serbenda/marquesina/actions/workflows/healthcheck.yml)
+[![Prueba en navegador](https://github.com/serbenda/marquesina/actions/workflows/e2e.yml/badge.svg)](https://github.com/serbenda/marquesina/actions/workflows/e2e.yml)
 
 Gratis · Sin registro · Sin anuncios · Sin cookies · Se instala como una app
 
@@ -31,6 +32,7 @@ Gratis · Sin registro · Sin anuncios · Sin cookies · Se instala como una app
 - [Preguntas frecuentes](#preguntas-frecuentes)
 - [Limitaciones conocidas](#limitaciones-conocidas)
 - [Datos y créditos](#datos-y-créditos)
+- [Licencia y seguridad](#licencia-y-seguridad)
 
 ---
 
@@ -136,7 +138,7 @@ flowchart LR
 | **Avisos** | Firma y cifra cada notificación, sin librerías | `push.js` |
 | **Repetidor** | Camino de respaldo fuera de Cloudflare para los bloqueos de LaLiga | `relay/` |
 
-**Tres caminos al mismo worker:** `api.bendi.dev`, `marquesina.serbenda.workers.dev` y un repetidor fuera de Cloudflare (Deno Deploy). Durante los partidos de LaLiga varias operadoras bloquean IP de Cloudflare; la web prueba los tres a la vez y se queda con el que conteste ([docs/RESPALDO.md](docs/RESPALDO.md)).
+**Tres caminos al mismo worker:** `api.bendi.dev`, `marquesina.serbenda.workers.dev` y un repetidor fuera de Cloudflare (Deno Deploy). Durante los partidos de LaLiga varias operadoras bloquean IP de Cloudflare; al abrir, la web prueba los tres a la vez y prefiere `api.bendi.dev`; si no contesta, usa el que lo haga ([docs/RESPALDO.md](docs/RESPALDO.md)).
 
 ¿Por qué un intermediario? El Consorcio **no permite** que otras webs le pidan datos desde el navegador, y EMT pide **usuario y contraseña**, que no pueden estar en la web. El worker resuelve las dos cosas y, de paso, junta peticiones y guarda respuestas unos segundos para ir más rápido.
 
@@ -160,9 +162,11 @@ marquesina/
 ├── relay/                   🛟 Repetidor de respaldo en Deno Deploy (bloqueos de LaLiga)
 ├── assets/                  🖼️ Iconos
 ├── tests/                   🧪 Tests con respuestas reales (fixtures/)
+│   └── e2e/                 🌍 Prueba en un navegador de verdad (Chromium)
 ├── docs/                    📚 Documentación (ver abajo)
 ├── .github/
-│   ├── workflows/           🤖 Tests, publicación, despliegue y chequeo horario
+│   ├── workflows/           🤖 Tests, publicación, despliegue, chequeo horario y prueba en navegador
+│   ├── scripts/check.sh     ⏱️ Una comprobación del chequeo horario, con su tiempo
 │   ├── ISSUE_TEMPLATE/      📝 Plantillas para avisar de fallos o proponer ideas
 │   ├── pull_request_template.md
 │   └── dependabot.yml       🔄 Avisa de versiones nuevas de las acciones
@@ -186,10 +190,10 @@ marquesina/
 git clone https://github.com/serbenda/marquesina.git
 cd marquesina
 git switch development     # nunca se trabaja en main
-npm test                   # 41 tests, ~10 s
+npm test                   # todos los tests, ~10 s
 npm run check              # sintaxis de los archivos JavaScript
 # prueba en navegador (como en GitHub):
-npm i --no-save playwright && npx playwright install chromium && node tests/e2e/web.e2e.mjs
+npm i --no-save --no-package-lock playwright@1.55.0 && npx playwright install --with-deps chromium && node tests/e2e/web.e2e.mjs
 ```
 
 ### Cómo llega un cambio a la web
@@ -207,7 +211,7 @@ flowchart LR
 
 | Robot | Cuándo | Qué hace |
 |---|---|---|
-| **Tests** | Cada PR y cada push | Sintaxis y `npm test` |
+| **Tests** | Cada PR y cada push a `development` o `main` | Sintaxis y `npm test`. **Obligatorio** para fusionar: `main` está protegida |
 | **Publicar en GitHub Pages** | Al fusionar en `main` | Publica la web |
 | **Desplegar worker en Cloudflare** | Al fusionar cambios del worker en `main` | Lo publica y comprueba que responde |
 | **Chequeo de marquesina** | Cada hora | Comprueba web, Consorcio, EMT, avisos y las tres direcciones, y cuánto tardan; si falla, llega un email |
@@ -228,7 +232,7 @@ Antes de abrir una PR, lee [CONTRIBUTING.md](CONTRIBUTING.md). Lo más important
 
 | Documento | Para quién | Qué tiene |
 |---|---|---|
-| **[docs/GUIA.md](docs/GUIA.md)** | **Empieza aquí** si no sabes nada | Qué es cada pieza con un símil, diccionario, diagramas, montaje desde cero en 9 fases, día a día y árbol de problemas |
+| **[docs/GUIA.md](docs/GUIA.md)** | **Empieza aquí** si no sabes nada | Qué es cada pieza con un símil, diccionario, diagramas, montaje desde cero en 11 fases (de la 0 a la 10), día a día y árbol de problemas |
 | [docs/REFERENCIA.md](docs/REFERENCIA.md) | Quien toca el código | Cómo funciona cada parte por dentro, con más de 30 diagramas, límites y mensajes de error |
 | [docs/ARQUITECTURA.md](docs/ARQUITECTURA.md) | Quien quiere entender las decisiones | Piezas, fuentes de datos, por qué así, seguridad |
 | [docs/MANTENIMIENTO.md](docs/MANTENIMIENTO.md) | Quien mantiene el servicio | Mobility Labs, Cloudflare, GitHub, comprobaciones y errores |
@@ -236,6 +240,7 @@ Antes de abrir una PR, lee [CONTRIBUTING.md](CONTRIBUTING.md). Lo más important
 | [docs/HISTORIA.md](docs/HISTORIA.md) | Todos | Cómo se construyó paso a paso: fechas, decisiones y lecciones |
 | [docs/OPERACIONES.md](docs/OPERACIONES.md) | SRE / DevOps | Vigilancia, incidentes, recuperación, límites y postmortems |
 | [docs/SEGURIDAD.md](docs/SEGURIDAD.md) | Seguridad | Amenazas, controles, secretos y riesgos |
+| [docs/UX.md](docs/UX.md) | Diseño | Revisión de experiencia de uso: hallazgos, cambios y siguientes mejoras |
 | [docs/RESPALDO.md](docs/RESPALDO.md) | Quien mantiene el servicio | Repetidor fuera de Cloudflare para los bloqueos de LaLiga |
 | [CONTRIBUTING.md](CONTRIBUTING.md) · [AGENTS.md](AGENTS.md) | Quien va a hacer cambios (personas o IA) | Normas, lista de comprobación y cosas que confunden |
 | [SECURITY.md](SECURITY.md) · [CHANGELOG.md](CHANGELOG.md) | Todos | Datos y secretos · historial |
@@ -304,6 +309,12 @@ Solo responde a `bendi.dev` y `serbenda.github.io`. Para otro proyecto lo mejor 
 
 - Autobuses: [EMT Madrid · Mobility Labs](https://mobilitylabs.emtmadrid.es/) y [Consorcio Regional de Transportes de Madrid](https://www.crtm.es/).
 - Mapa: © colaboradores de [OpenStreetMap](https://www.openstreetmap.org/copyright), con [Leaflet](https://leafletjs.com/).
+
+## Licencia y seguridad
+
+- **Licencia:** todavía sin elegir. Mientras tanto, el código es visible pero todos los derechos están reservados: para reutilizarlo hay que pedir permiso.
+- **¿Has encontrado un fallo de seguridad?** No abras un issue público: sigue [SECURITY.md](SECURITY.md).
+- **¿Algo no funciona o tienes una idea?** Abre un issue con las plantillas de *Algo no funciona* o *Idea o mejora*.
 
 <div align="center">
 

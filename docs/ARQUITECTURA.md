@@ -33,9 +33,10 @@ flowchart LR
 | App instalable | `manifest.webmanifest`, `sw.js`, `assets/` | Navegador del usuario | Igual que la web |
 | Lógica compartida | `logic.js` | Navegador, worker y tests | Con la web y con el worker |
 | Proxy y avisos | `worker.js`, `push.js`, `wrangler.toml` | Cloudflare Workers + Durable Object `PushHub` + cron cada minuto | Automático: cambios en `main` → workflow `worker.yml` |
-| Repetidor de respaldo | `relay/relay.js`, `relay/main.js` | Deno Deploy (organización `serbenda`, app `marquesina`) | Automático: Deno publica cada cambio en `main` |
-| Tests | `tests/`, `package.json` | GitHub Actions en cada PR | Workflow `tests.yml` |
-| Vigilancia | `.github/workflows/healthcheck.yml` | GitHub Actions, cada hora | Forma parte del repo |
+| Repetidor de respaldo | `relay/relay.js`, `relay/main.js` | Deno Deploy (organización `serbenda`, app `marquesina`) | Automático: Deno publica en producción cada cambio de `main` (y una versión de prueba de cada cambio en otras ramas) |
+| Tests | `tests/`, `package.json` | GitHub Actions en cada PR y cada push a `development` o `main` | Workflow `tests.yml` |
+| Prueba en navegador | `tests/e2e/web.e2e.mjs` | GitHub Actions (Chromium real): cada PR, tras publicar y cada 3 h | Workflow `e2e.yml` |
+| Vigilancia | `.github/workflows/healthcheck.yml`, `.github/scripts/check.sh` | GitHub Actions, cada hora | Forma parte del repo |
 | Despliegue | `.github/workflows/pages.yml` | GitHub Actions | Forma parte del repo |
 | Sin Jekyll | `.nojekyll` | GitHub Pages | Hace que GitHub sirva los archivos tal cual |
 
@@ -58,9 +59,9 @@ flowchart LR
 - **Qué da:** tiempo de llegada por parada y **posición GPS de los autobuses** de cada línea (`GetLineLocation`). En el mapa los buses aparecen como en EMT y la parada lleva además una etiqueta con las 3 próximas llegadas.
 - **Acceso:** sin registro, pero **no admite CORS**: el navegador no puede llamarla desde otra web. Por eso pasa por el worker.
 - **Llamadas** (siempre vía el worker: `https://api.bendi.dev/crtm/...`):
-  - `GetStops.php?codStop=8_06756`: nombre y coordenadas de la parada. Se guarda en caché en memoria mientras la página está abierta.
+  - `GetStops.php?codStop=8_06756`: nombre y coordenadas de la parada. El worker lo guarda 1 día en su caché (`crtmGetDaily`).
   - `GetStopsTimes.php?codStop=8_06756&type=1&orderBy=2&stopTimesByIti=3`: próximas llegadas (`stopTimes.times.Time[]`, con `line.shortDescription`, `destination`, `time` en ISO y `codIssue`).
-  - `GetNearestStopsByLocation.php?latitude=..&longitude=..&mode=&method=1&precision=350`: paradas cercanas a un punto. Lo usan los botones **Buscar paradas** (punto tocado en el mapa) y **Cerca de mí** (ubicación del navegador; se quedan las 3 más cercanas).
+  - `GetNearestStopsByLocation.php?latitude=..&longitude=..&mode=&method=1&precision=<radio>`: paradas cercanas a un punto. La web la pide al worker **sin** `.php` (`/crtm/GetNearestStopsByLocation?…`, porque el repetidor de Deno rechaza esas rutas), con el punto redondeado a ~100 m y el radio a 50 m (mínimo 100; *Cerca de mí* usa 600 m). El worker la guarda 1 día. Lo usan los botones **Buscar paradas** (punto tocado en el mapa) y **Cerca de mí** (ubicación del navegador; se quedan las 3 más cercanas).
 - **Posición de los autobuses** (lo hace el worker en `/crtm/stop/<parada>`, ver §5):
   1. Con las líneas y sentidos que salen en `GetStopsTimes` (solo autobuses: modos 8 y 9), se pide una vez por línea `GetLinesInformation.php?activeItinerary=1&codLine=<línea>`, que da los itinerarios con su sentido y sus paradas. Se guarda en memoria del worker y 1 día en la caché de Cloudflare.
   2. Se elige el itinerario que contiene la parada y tiene ese sentido.
@@ -81,7 +82,7 @@ Teselas de OpenStreetMap (`tile.openstreetmap.org`) con atribución. Para un uso
 
 ## 4. Cómo funciona la web por dentro (`index.html`)
 
-1. **Arranque:** lee los ajustes de `localStorage` (clave `marquesina`). Si no hay nada guardado, usa los valores por defecto (`DEF`), con dos paradas de ejemplo en Alcobendas. Si hay ajustes guardados se respetan tal cual, también sin paradas. La URL del worker es fija (constante `PROXY`) y no se puede cambiar desde la web. Los campos de versiones anteriores (`email`, `pass`, `base`, `proxy`, `demo`) se descartan al leer.
+1. **Arranque:** lee los ajustes de `localStorage` (clave `marquesina`). Si no hay nada guardado, usa los valores por defecto (`DEF`), con dos paradas de ejemplo en Alcobendas. Si hay ajustes guardados se respetan tal cual, también sin paradas. Las direcciones del worker son fijas (`PROXIES`, tres caminos) y no se pueden cambiar desde la web; al abrir, `pickProxy()` elige la que contesta, prefiriendo `api.bendi.dev` (ver §5.2). Los campos de versiones anteriores (`email`, `pass`, `base`, `proxy`, `demo`) se descartan al leer.
 2. **Estado:** *En vivo* si hay paradas; *Sin paradas* si no hay ninguna (la lista invita a añadir con Cerca de mí, Zona o Buscar paradas); *Sin conexión* si fallan todas. No hay modo de demostración: todo son datos reales.
 3. **Ciclo:** `setInterval(tick, 1000)`.
    - Cada segundo se actualizan la cuenta atrás del anillo y los minutos de la lista (restando el tiempo transcurrido desde la última consulta, sin volver a llamar a la API).
@@ -97,7 +98,7 @@ Teselas de OpenStreetMap (`tile.openstreetmap.org`) con atribución. Para un uso
 - **Tarjeta principal:** `heroHtml()` elige, entre las paradas con minutos andando, la salida más próxima (las favoritas primero) y la muestra arriba en grande. Se pone roja cuando toca salir ya.
 - **Orden:** favoritas primero; el resto, en el orden en que se añadieron.
 - **Editar parada:** el botón *Editar* abre un diálogo con nombre, minutos andando, favorita y *Quitar parada*.
-- **Volver a la app:** al recuperar el foco (`visibilitychange`), si los datos tienen más de 15 s se refrescan al momento.
+- **Volver a la app:** al recuperar el foco (`visibilitychange`), si los datos tienen más de 5 s se refrescan al momento.
 
 ### Buscar paradas, zonas y bienvenida
 - **Fuentes de la búsqueda:** se combinan dos, en paralelo: `GetNearestStopsByLocation` del Consorcio (autobuses del Consorcio, Metro, Cercanías y parte de EMT) y la API de EMT (`/emt/near`, todas las paradas de EMT). **El Consorcio no tiene todas las paradas de EMT**: en El Pardo devuelve 0 paradas en 1,5 km. `mergeStops()` quita los duplicados. Si una fuente falla, vale la otra.
@@ -115,21 +116,21 @@ Teselas de OpenStreetMap (`tile.openstreetmap.org`) con atribución. Para un uso
 
 ### Carga rápida
 - Cada parada se enseña en cuanto llega (`doRefresh()`), sin esperar a las demás; mientras tanto se ven sus datos anteriores. El mapa se redibuja al final, para encuadrar con todas.
-- Ninguna petición puede quedarse colgada: `getJson()` la corta a los 10 s y la parada pasa a *Sin conexión* con sus últimos datos.
+- Ninguna petición puede quedarse colgada: `getJson()` la corta a los 10 s por defecto (15 s los minutos de una parada del Consorcio y 25 s las búsquedas de paradas) y la parada sigue mostrando sus últimos datos, marcados como antiguos.
 
 ### Datos antiguos
 - Si una parada falla al actualizar, se conservan sus últimos datos durante 15 minutos con `stale: true`. Cada parada lleva su propia hora de consulta (`at`), y los minutos se descuentan desde ella.
-- Debajo del nombre aparece *Sin conexión · datos hace N min*. Si fallan todas, la etiqueta superior pasa de *En vivo* a *Sin conexión*.
+- Debajo del nombre aparece *Sin datos nuevos · son de hace N min*. Si fallan todas, la etiqueta superior pasa de *En vivo* a *Sin conexión*.
 - Solo hay una consulta en marcha a la vez. Las peticiones que llegan mientras tanto (por ejemplo, al añadir una parada) se hacen justo después, no se pierden.
 
 ### App instalable (PWA)
 
 - `manifest.webmanifest`: nombre, colores, `display: standalone` e iconos (192, 512 y uno *maskable* para Android).
 - `sw.js` (service worker):
-  - **La página:** primero red; si no hay conexión, la última guardada.
-  - **Librerías, fuentes e iconos:** primero caché.
-  - **Datos del worker (`api.bendi.dev` y `*.workers.dev`) y teselas de OpenStreetMap:** nunca se guardan, siempre en vivo.
-  - `VERSION` identifica la caché. Al cambiarla, el service worker nuevo borra la anterior.
+  - **Lo nuestro (página, `logic.js`, `push.js`, iconos, manifest):** primero red; si no hay conexión, la copia guardada. Hasta la v6, `logic.js` iba primero caché y eso rompió la web tras una publicación (INC-8 en [OPERACIONES.md](OPERACIONES.md)).
+  - **Leaflet (cdnjs) y fuentes de Google:** primero caché; tienen versión fija.
+  - **Datos del worker (`api.bendi.dev`, `*.workers.dev` y el repetidor `*.deno.net`) y teselas de OpenStreetMap:** nunca se guardan, siempre en vivo.
+  - `VERSION` identifica la caché. Al cambiarla, el service worker nuevo borra la anterior. Ya no hace falta cambiarla en cada publicación.
 - **Instalar:** en Android y escritorio aparece el botón *Instalar* (evento `beforeinstallprompt`). En iPhone se muestra una vez el aviso de *Compartir → Añadir a pantalla de inicio*.
 
 ### Ajustes guardados (`localStorage["marquesina"]`)
@@ -145,7 +146,7 @@ Teselas de OpenStreetMap (`tile.openstreetmap.org`) con atribución. Para un uso
 ## 5. El proxy (`worker.js`)
 
 - `/crtm/stop/<parada>` → **todo lo de una parada del Consorcio en una sola respuesta**: `stop` (nombre y posición, de `GetStops`, caché 1 día), `stopTimes` (de `GetStopsTimes`) y `vehicles` (posición de los buses de cada línea con `GetLinesInformation` + `GetLineLocation`). La posición de los buses espera como mucho 2,5 s (`VEHICLES_WAIT_MS`): si el Consorcio tarda más (a veces tarda hasta 8 s en dar el recorrido de una línea), la respuesta sale con los tiempos y la última posición conocida (menos de 1 min), y la consulta termina en segundo plano (`ctx.waitUntil`) para la siguiente vez. La web hace así 1 petición por parada en vez de hasta 8; las consultas al Consorcio desde el worker son subpeticiones y no cuentan en el límite diario.
-- `/crtm/<Archivo>.php?...` → `https://www.crtm.es/widgets/api/<Archivo>.php?...`. Solo deja pasar nombres que encajan con `Get*.php`, así no se puede usar como proxy abierto. Lo usa la búsqueda de paradas (`GetNearestStopsByLocation`). Cloudflare cachea 10 s.
+- `/crtm/GetX?...` (con o sin `.php`) → `https://www.crtm.es/widgets/api/GetX.php?...`. Solo deja pasar `Get` + letras (`^(Get[A-Za-z]+)(\.php)?$`), así no se puede usar como proxy abierto. Lo usa la búsqueda de paradas (`GetNearestStopsByLocation`). `GetNearestStopsByLocation`, `GetStops` y `GetLinesInformation` se guardan 1 día; el resto, 10 s.
 - `/emt/near/<lat>/<lon>/<radio>` → paradas de EMT alrededor de un punto (`GET /v2/transport/busemtmad/stops/arroundxy/<lon>/<lat>/<radio>/`, radio 50–1.500 m). Caché de 1 día por punto redondeado a ~100 m, porque las paradas casi no cambian. También se guarda la respuesta *sin paradas* (código `01`).
 - `/emt/arrives/<parada>` → inicia sesión en EMT con los secretos de la aplicación (o los de la cuenta si fallan) y devuelve las llegadas de la parada (mismo JSON que EMT). Guarda la respuesta 10 s en la caché de Cloudflare (`caches.default`), así varios usuarios mirando la misma parada generan una sola consulta.
 - **CORS:** responde con `Access-Control-Allow-Origin` solo para los orígenes de `ALLOWED_ORIGINS` (`https://bendi.dev`, `https://serbenda.github.io`).
@@ -263,7 +264,7 @@ Configuración necesaria en el repo: **Settings → Pages → Source: GitHub Act
 - **Manual:** el worker ya no es un solo archivo (importa `logic.js` y `push.js`), así que no se puede pegar en el editor de Cloudflare. Si el despliegue automático falla, se relanza desde *Actions → Desplegar worker en Cloudflare → Run workflow* (ver MANTENIMIENTO §2.3).
 
 ### Repetidor
-- Deno Deploy está conectado al repositorio y vuelve a publicar `relay/` cada vez que cambia `main`, sin workflow propio. Configuración: *Dynamic*, entrypoint `relay/main.js`, sin comando de instalación ni de build, sin variables.
+- Deno Deploy está conectado al repositorio y vuelve a publicar `relay/` cada vez que cambia `main` (producción). Además, cada push a otra rama (`development`) crea una versión de prueba aparte, que no afecta a la web; con el plan sin verificar, más de 15 en una hora salen en rojo en la PR. No tiene workflow propio. Configuración: *Dynamic*, entrypoint `relay/main.js`, sin comando de instalación ni de build, sin variables.
 - Los builds y registros están en console.deno.com → `serbenda` → `marquesina` → *Builds* / *Logs*.
 
 ### Vigilancia
@@ -282,7 +283,7 @@ Configuración necesaria en el repo: **Settings → Pages → Source: GitHub Act
 |---|---|---|
 | La web sigue mostrando la versión vieja | Caché de Pages o del navegador | Recarga forzada o `?v=N`; revisar que el workflow terminó en verde |
 | El workflow no arranca | Pages no está en "GitHub Actions" o Actions desactivadas | Settings → Pages / Settings → Actions → General |
-| "No se pudo conectar con el Consorcio…" | Worker caído, URL mal o origen no permitido | Abrir la URL de prueba del §6; si la web está en un dominio nuevo, añadirlo a `ALLOWED_ORIGINS` y volver a desplegar |
+| "No se pudo conectar con el Consorcio…" | Worker caído, URL mal o origen no permitido | Abrir las URL de prueba de [MANTENIMIENTO.md §4](MANTENIMIENTO.md); si la web está en un dominio nuevo, añadirlo a `ALLOWED_ORIGINS` y volver a desplegar |
 | Paradas del Consorcio sin datos o datos raros | El Consorcio cambió su API | Abrir `GetStopsTimes.php` en el navegador, ver el JSON nuevo y ajustar `crtmArrivals()` |
 | Paradas de EMT con "EMT rechazó el inicio de sesión" o "Faltan los secretos…" | Secretos del worker sin poner, mal copiados o claves revocadas | Revisar `EMT_CLIENT_ID` y `EMT_PASSKEY` en Cloudflare y la aplicación en Mobility Labs |
 | Worker devuelve 429 o deja de responder | Límite diario del plan gratuito | Ver métricas en Cloudflare; subir `cacheTtl` o el intervalo por defecto |
@@ -293,7 +294,7 @@ Configuración necesaria en el repo: **Settings → Pages → Source: GitHub Act
 ### Revisiones periódicas
 - **Cada pocos meses:** comprobar que las tres APIs siguen respondiendo igual (ver las URLs de prueba).
 - **Leaflet:** está fijado a 1.9.4. Para actualizarlo, cambiar la versión en las dos etiquetas (`<link>` del CSS y `<script>`) y probar el mapa.
-- **Acciones de los workflows:** `checkout@v7`, `setup-node@v7`, `configure-pages@v6`, `upload-pages-artifact@v3`, `deploy-pages@v5` y `cloudflare/wrangler-action@v4`. Dependabot propone cada mes las versiones nuevas con una PR a `development`.
+- **Acciones de los workflows:** `checkout@v7`, `setup-node@v7`, `configure-pages@v6`, `upload-pages-artifact@v3`, `deploy-pages@v5`, `cloudflare/wrangler-action@v4` y, en la prueba en navegador, `actions/upload-artifact@v4` (con Playwright 1.55.0 sobre Ubuntu 24.04). Dependabot propone cada mes las versiones nuevas con una PR a `development`.
 
 ## 8. Seguridad y privacidad
 
@@ -305,6 +306,5 @@ Configuración necesaria en el repo: **Settings → Pages → Source: GitHub Act
 
 ## 9. Ideas pendientes
 
-- Paradas compartibles por enlace.
 - Cercanías y Metro en tiempo real; incidencias de EMT; BiciMAD.
 - Límite de consultas por usuario en el worker.

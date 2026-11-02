@@ -68,7 +68,7 @@ Las tres direcciones, en orden: `api.bendi.dev` → `marquesina.serbenda.workers
 
 1. 🖱️ **+ New App**.
 2. Elige el repositorio **serbenda/marquesina**. Si no aparece: **Configure GitHub App permissions** → dale acceso solo a `marquesina`.
-3. En **App Config** pulsa **Edit build config** y deja:
+3. En el cuadro **App Config** pulsa **Edit app config** y deja:
 
 | Campo | Valor |
 |---|---|
@@ -86,11 +86,11 @@ Las tres direcciones, en orden: `api.bendi.dev` → `marquesina.serbenda.workers
 
 ✅ **Bien si:** `https://marquesina.serbenda.deno.net/push/key` muestra `{"publicKey":"…"}` (la misma clave que `https://api.bendi.dev/push/key`).
 
-ℹ️ Si Deno Deploy da otra dirección, hay que cambiarla en tres sitios: `PROXIES` en `index.html`, el paso *Repetidor de respaldo* de `.github/workflows/healthcheck.yml` y este documento.
+ℹ️ Si Deno Deploy da otra dirección, hay que cambiarla en estos sitios: `PROXIES` en `index.html`; los pasos *Repetidor de respaldo* y *Búsqueda de paradas a través del repetidor* de `.github/workflows/healthcheck.yml`; `RELAY` y `WORKER_HOSTS` en `tests/e2e/web.e2e.mjs`; el `.deno.net` de `sw.js` si cambia el dominio; y este documento.
 
 ### Paso 3 · Actualizaciones
 
-Deno Deploy vuelve a publicar el repetidor solo cada vez que cambia la rama `main`. No hay que hacer nada más. Cada publicación aparece en **console.deno.com → serbenda → marquesina → Builds**, y los registros en **Logs**.
+Deno Deploy vuelve a publicar el repetidor solo cada vez que cambia la rama `main` (producción). Además, cada push a otra rama (`development`) crea una versión de prueba aparte, que no afecta a la web; con el plan sin verificar, más de 15 en una hora salen en rojo en la PR. No hay que hacer nada más. Cada publicación aparece en **console.deno.com → serbenda → marquesina → Builds**, y los registros en **Logs**.
 
 ## 4. Comprobaciones
 
@@ -110,7 +110,7 @@ El chequeo horario de GitHub (*Chequeo de marquesina*, paso **Repetidor de respa
 | `{"code":"ERR","error":"El repetidor no pudo llegar al worker…"}` | El worker de Cloudflare no responde | Es un fallo del worker, no del repetidor: [MANTENIMIENTO.md](MANTENIMIENTO.md) |
 | *Zona*, *Buscar paradas* o *Cerca de mí* traen casi nada durante un bloqueo | La ruta acaba en `.php` y Deno Deploy la rechaza con un 404 vacío (sin CORS: el navegador ve *Failed to fetch*) | La web pide `/crtm/Get…` **sin** `.php` y el worker lo añade. No volver a usar rutas `.php` a través del repetidor |
 | 404 en todas las rutas | Entrypoint mal configurado | Deno Deploy → app → Settings → Build config → `relay/main.js` |
-| La dirección no existe | La app o la organización tienen otro nombre | Ver la dirección real en Deno Deploy y cambiarla en los tres sitios del paso 2 |
+| La dirección no existe | La app o la organización tienen otro nombre | Ver la dirección real en Deno Deploy y cambiarla en los sitios que indica el paso 2 |
 | Funciona en el navegador pero la web no lo usa | Caché del navegador | Recargar forzando; si persiste, comprobar que `sw.js` tiene `.deno.net` en la lista de direcciones que no guarda |
 | Falla también durante un partido | Han bloqueado también IP de Deno | Esperar al final del partido; valorar un cuarto proveedor |
 

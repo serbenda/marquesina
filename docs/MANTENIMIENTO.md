@@ -39,7 +39,8 @@ flowchart LR
 | Secretos del worker | `EMT_CLIENT_ID` y `EMT_PASSKEY` (aplicación); `EMT_EMAIL` y `EMT_PASSWORD` (cuenta, respaldo) |
 | Icono de la aplicación | [`assets/icono.png`](../assets/icono.png) (512×512) |
 | Secreto de GitHub | `CLOUDFLARE_API_TOKEN` (despliegue del worker) |
-| Workflows | `pages.yml` (web), `worker.yml` (worker), `healthcheck.yml` (chequeo horario), `tests.yml` (tests en cada PR) |
+| Workflows | `pages.yml` (web), `worker.yml` (worker), `healthcheck.yml` (chequeo horario), `tests.yml` (tests en cada PR), `e2e.yml` (prueba en navegador) |
+| Rama `main` | Protegida: solo con PR y con el check `test` en verde (ver §3.5) |
 | Durable Object | `PushHub` (suscripciones y claves VAPID de los avisos) |
 | Cron del worker | `* * * * *` (revisa los avisos cada minuto) |
 | Repetidor de respaldo | Deno Deploy, organización `serbenda`, app `marquesina`: https://marquesina.serbenda.deno.net (ver [RESPALDO.md](RESPALDO.md)) |
@@ -97,7 +98,7 @@ Hazlo si se filtran o si sospechas que hay un uso indebido:
 
 ### 2.1 Crear la cuenta (una vez)
 1. Entra en https://dash.cloudflare.com y regístrate. El plan gratuito es suficiente.
-2. Si te pide añadir un dominio, sáltatelo: el worker no necesita dominio propio.
+2. Si te pide añadir un dominio, sáltatelo de momento: el dominio propio `api.bendi.dev` se configura después, siguiendo [DOMINIO.md](DOMINIO.md).
 
 ### 2.2 Crear el worker (una vez)
 1. Menú de la izquierda → **Build → Compute (Workers)**. En algunas cuentas aparece como **Workers & Pages**.
@@ -133,7 +134,7 @@ Para cambiar un secreto, edítalo en esa misma pantalla y vuelve a pulsar **Depl
 `ALLOWED_ORIGINS` en `worker.js` contiene `https://bendi.dev` y `https://serbenda.github.io`. Si la web se publica en otro dominio, añádelo ahí y repite el paso 2.3.
 
 ### 2.6 Vigilar el uso
-Cloudflare → `marquesina` → **Metrics** (o *Observability*). El plan gratuito permite 100.000 peticiones al día. Las respuestas se guardan 20 s en caché, así que muchas personas mirando la misma parada cuentan poco.
+Cloudflare → `marquesina` → **Metrics** (o *Observability*). El plan gratuito permite 100.000 peticiones al día. Las llegadas se guardan 10 s en caché (y las búsquedas de paradas, 1 día), así que muchas personas mirando la misma parada cuentan poco.
 
 ---
 
@@ -141,7 +142,7 @@ Cloudflare → `marquesina` → **Metrics** (o *Observability*). El plan gratuit
 El workflow `.github/workflows/worker.yml` despliega el worker con wrangler. Necesita un token de Cloudflare guardado en GitHub:
 
 1. **Crear el token en Cloudflare:** icono de perfil (arriba a la derecha) → **My Profile** → **API Tokens** → **Create Token** → plantilla **Edit Cloudflare Workers** → **Use template**.
-   - En *Account Resources*, elige la cuenta `Serbenda@gmail.com's Account`. En *Zone Resources*, **All zones** (no se usa ninguna zona).
+   - En *Account Resources*, elige la cuenta `Serbenda@gmail.com's Account`. En *Zone Resources*, **All zones**: hace falta para que el despliegue cree `api.bendi.dev` (se podría limitar a la zona `bendi.dev`).
    - **Continue to summary** → **Create Token**. Copia el token: solo se muestra una vez.
 2. **Guardarlo en GitHub:** repo `marquesina` → **Settings** → **Secrets and variables** → **Actions** → **New repository secret**.
    - Name: `CLOUDFLARE_API_TOKEN`
@@ -172,10 +173,10 @@ El plan gratuito incluye los Durable Objects con almacenamiento SQLite y los cro
 
 **Cambios que tocan la web y el worker a la vez:** al fusionar se ejecutan los dos workflows en paralelo. El del worker tarda menos de un minuto; si la web nueva depende de una ruta nueva del worker, puede fallar durante ese rato.
 
-**App instalada (service worker):** la página se pide siempre a la red primero, así que los cambios llegan solos. Si cambias `sw.js` o la lista de archivos que guarda, sube `VERSION` en `sw.js` (por ejemplo `marquesina-v2`) para que los móviles borren la caché anterior.
+**App instalada (service worker):** desde la v7, la página y todos sus archivos se piden siempre a la red primero, así que los cambios llegan solos. `VERSION` en `sw.js` solo hace falta subirla para vaciar las copias guardadas (la siguiente sería `marquesina-v8`).
 
 ### 3.3 Avisos del chequeo horario
-El workflow **Chequeo de marquesina** (`healthcheck.yml`) comprueba cada hora la web, el Consorcio y EMT.
+El workflow **Chequeo de marquesina** (`healthcheck.yml`) comprueba cada hora la web, el Consorcio, EMT, la clave de los avisos, `workers.dev`, el repetidor y una búsqueda real por el repetidor, y cuánto tarda cada cosa (pestaña *Summary* de cada ejecución).
 - **Recibir el email si falla:** GitHub → tu perfil → **Settings** → **Notifications** → **System → Actions**: activa las notificaciones por email (*Only notify for failed workflows*).
 - **Ver qué ha fallado:** repo → **Actions** → la ejecución en rojo → el paso que falló muestra la respuesta recibida.
 - **Si deja de ejecutarse:** GitHub desactiva los workflows programados tras 60 días sin actividad en el repo. Reactívalo en **Actions** → *Chequeo de marquesina* → **Enable workflow**.
@@ -185,13 +186,22 @@ Commits firmados como `Sergio Santiago Bendaña Quesada <serbenda@gmail.com>`. L
 
 ---
 
+
+### 3.5 Protección de la rama `main`
+Configurada el 1 de noviembre de 2026 en **Settings → Branches → Branch protection rules → `main`**:
+- **Require a pull request before merging** ✅, sin *Require approvals* (hay un solo revisor y GitHub no deja aprobar tus propias PR).
+- **Require status checks to pass** ✅ con el check `test` (workflow *Tests*). La *Prueba en navegador* no es obligatoria: usa servicios externos y un fallo ajeno bloquearía las PR.
+- *Allow force pushes* ❌ y *Allow deletions* ❌.
+- *Do not allow bypassing the above settings* ❌: el administrador puede saltársela en una emergencia.
+- Guardarla pide confirmar la identidad (*Confirm access*) con el 2FA de GitHub.
+
 ## 4. Comprobaciones rápidas
 
 Abre estas URLs en el navegador:
 
 | Qué se comprueba | URL | Resultado esperado |
 |---|---|---|
-| Worker y Consorcio | `https://api.bendi.dev/crtm/GetStops.php?codStop=8_06756` | JSON con `"MARQUÉS VALDAVIA"` |
+| Worker y Consorcio | `https://api.bendi.dev/crtm/GetStops?codStop=8_06756` | JSON con `"MARQUÉS VALDAVIA"` |
 | Worker y EMT (secretos) | `https://api.bendi.dev/emt/arrives/69` | JSON con `"code":"00"` y llegadas en `data[0].Arrive` |
 | Avisos (clave VAPID) | `https://api.bendi.dev/push/key` | JSON con `publicKey` (87 caracteres) |
 | Dirección alternativa | `https://marquesina.serbenda.workers.dev/push/key` | La misma clave |
@@ -260,10 +270,10 @@ flowchart TB
 
 ## 8. Revisión periódica (cada pocos meses)
 
-- [ ] Las tres comprobaciones del §4 responden bien.
+- [ ] Las comprobaciones del §4 responden bien.
 - [ ] La aplicación `marquesina` sigue activa en Mobility Labs.
 - [ ] El uso del worker en Cloudflare está lejos del límite diario.
-- [ ] Los workflows (Pages, worker y chequeo) siguen en verde y sin avisos de acciones obsoletas.
+- [ ] Los cinco workflows (Tests, Pages, worker, chequeo y prueba en navegador) siguen en verde y sin avisos de acciones obsoletas.
 - [ ] El chequeo horario sigue activo (no desactivado por inactividad).
 - [ ] El token `CLOUDFLARE_API_TOKEN` sigue siendo válido (Cloudflare → API Tokens).
 - [ ] El cron del worker sigue activo y el aviso de prueba llega (§4).

@@ -113,19 +113,21 @@ flowchart TB
   T1["tests/logic.test.js"] --> LOG
   T2["tests/worker.test.js"] --> WRK
   T2 --> PUSH
+  T3["tests/relay.test.js"] --> RL["relay/relay.js"]
   FX["tests/fixtures/*.json<br/>respuestas reales"] --> T1
   FX --> T2
+  E2E["tests/e2e/web.e2e.mjs<br/>Chromium + servicios reales"] -. "abre" .-> IDX
 ```
 
-| Archivo | Líneas aprox. | Qué contiene | Se ejecuta en |
+| Archivo | Tamaño aprox. | Qué contiene | Se ejecuta en |
 |---|---|---|---|
-| `index.html` | 820 | Estilos, pantalla, mapa, ciclo de actualización, diálogos, avisos | Navegador |
-| `logic.js` | 200 | Funciones puras: leer APIs, agrupar, calcular salida, formatos | Navegador **y** worker |
-| `push.js` | 100 | Claves VAPID, firma ES256, cifrado aes128gcm, envío | Worker (y `unb64url` en la web) |
-| `sw.js` | 80 | Caché de la app y recepción de notificaciones | Navegador (segundo plano) |
-| `worker.js` | 420 | Rutas, proxy, cachés, Durable Object, cron | Cloudflare |
-| `wrangler.toml` | 30 | Nombre, dominio, Durable Object, cron | Despliegue |
-| `relay/relay.js` | 100 | Repetidor: rutas permitidas, reenvío, alternativa, CORS | Deno Deploy (y Node en los tests) |
+| `index.html` | 950 líneas | Estilos, pantalla, mapa, ciclo de actualización, diálogos, avisos | Navegador |
+| `logic.js` | 450 líneas | Funciones puras: leer APIs, agrupar, calcular salida, formatos | Navegador **y** worker |
+| `push.js` | 160 líneas | Claves VAPID, firma ES256, cifrado aes128gcm, envío | Worker (y `unb64url` en la web) |
+| `sw.js` | 100 líneas | Caché de la app y recepción de notificaciones | Navegador (segundo plano) |
+| `worker.js` | 520 líneas | Rutas, proxy, cachés, Durable Object, cron | Cloudflare |
+| `wrangler.toml` | 25 líneas | Nombre, dominio, Durable Object, cron | Despliegue |
+| `relay/relay.js` | 100 líneas | Repetidor: rutas permitidas, reenvío, alternativa, CORS | Deno Deploy (y Node en los tests) |
 | `relay/main.js` | 5 | `Deno.serve(handle)` | Deno Deploy |
 
 ---
@@ -320,7 +322,7 @@ sequenceDiagram
   U->>W: Zona → "Colmenar Viejo"<br/>(o mueve el mapa con Buscar paradas activo)
   W->>W: Centro del mapa y radio visible (máx. 1500 m)<br/>solo con zoom ≥ 15
   par las dos fuentes a la vez
-    W->>K: /crtm/GetNearestStopsByLocation.php
+    W->>K: /crtm/GetNearestStopsByLocation (sin .php)
     K->>C: (reintento si falla)
     C-->>W: paradas de autobús, Metro, Cercanías y parte de EMT
   and
@@ -339,8 +341,8 @@ sequenceDiagram
 ```mermaid
 flowchart LR
   A["Bienvenida"] --> B["📍 Usar mi ubicación"]
-  A --> C["🗺️ Elegir zona"]
-  A --> D["Saltar"]
+  A --> C["🗺️ Elegir un municipio"]
+  A --> D["Ver paradas de ejemplo"]
   B --> E["Carga 3 paradas cercanas"] --> F["Paso 2: nombre de la parada<br/>y minutos andando"] --> G["Guarda como favorita"]
   C --> H["Diálogo de zonas"]
   D --> I["Queda con las paradas de ejemplo"]
@@ -475,7 +477,7 @@ flowchart TB
   O -- "Sí" --> CORS["Cabeceras CORS<br/>(sin cuerpo)"]
   O -- "No" --> R1{"/crtm/stop/CÓDIGO"}
   R1 -- "Sí" --> H1["crtmStop()"]
-  R1 -- "No" --> R2{"/crtm/Get*.php"}
+  R1 -- "No" --> R2{"/crtm/GetX<br/>(con o sin .php)"}
   R2 -- "Sí" --> H2["crtmFetch()<br/>(proxy directo)"]
   R2 -- "No" --> R3{"/emt/near/lat/lon/r"}
   R3 -- "Sí" --> H3["emtNear()"]
@@ -492,7 +494,7 @@ flowchart TB
 | Ruta | Método | Qué devuelve | Caché | Si falla |
 |---|---|---|---|---|
 | `/crtm/stop/06756` | GET | `{stop:{name,pos}, stopTimes, vehicles, stale?}` | 10 s | Últimos datos buenos (`stale:true`) o **502** |
-| `/crtm/GetStops.php?…` (y cualquier `Get*.php`) | GET | La respuesta del Consorcio tal cual | 10 s | **502** `El Consorcio no responde ahora mismo` |
+| `/crtm/GetX?…` (cualquier `Get` + letras, **con o sin `.php`**; la web lo pide sin) | GET | La respuesta del Consorcio tal cual | `GetNearestStopsByLocation`, `GetStops` y `GetLinesInformation`: 1 día en el worker y 1 h en el navegador. El resto: 10 s | **502** `El Consorcio no responde ahora mismo` |
 | `/emt/near/40.47/-3.68/500` | GET | Respuesta de EMT `arroundxy` | 1 día | **502** `{code:"ERR"}` |
 | `/emt/arrives/69` | GET | Respuesta de EMT `arrives` | 10 s | **502** `{code:"ERR", description}` |
 | `/push/key` | GET | `{publicKey}` | — | — |
@@ -626,7 +628,7 @@ flowchart LR
 | Recorridos de cada línea | Memoria | Mientras viva la instancia | `codLine` |
 | Posiciones de los buses | Memoria | 1 min | código de parada |
 
-⚠️ **Nunca se guardan** en el navegador las respuestas del worker ni las teselas del mapa: tienen que ser en vivo.
+⚠️ El service worker **nunca guarda** las respuestas del worker ni las teselas del mapa. El navegador sí respeta el `Cache-Control` que manda el worker: 10 s para los datos en vivo y 1 h para las búsquedas de paradas.
 
 ### 6.8 CORS
 
@@ -797,7 +799,7 @@ sequenceDiagram
 flowchart TB
   A["Petición del navegador"] --> B{"¿Es GET?"}
   B -- "No" --> NET["Red normal"]
-  B -- "Sí" --> C{"¿Worker (api.bendi.dev,<br/>*.workers.dev) o teselas OSM?"}
+  B -- "Sí" --> C{"¿Worker (api.bendi.dev,<br/>*.workers.dev, *.deno.net)<br/>o teselas OSM?"}
   C -- "Sí" --> NET
   C -- "No" --> D{"¿Es nuestro (bendi.dev):<br/>página, logic.js, push.js,<br/>iconos, manifest?"}
   D -- "Sí" --> E["Primero red;<br/>si falla, la copia guardada"]
@@ -902,7 +904,7 @@ flowchart TB
 |---|---|
 | Robo de las claves de EMT | Solo están como secretos del worker; la web no las ve nunca |
 | Otra web usando el worker | CORS limitado a `bendi.dev` y `serbenda.github.io` |
-| Usar el worker como proxy abierto | Solo rutas concretas; en `/crtm/` solo archivos `Get*.php` |
+| Usar el worker como proxy abierto | Solo rutas concretas; en `/crtm/` solo `Get` + letras, con o sin `.php` (`^(Get[A-Za-z]+)(\.php)?$`) |
 | Usar los avisos para atacar otros sitios | Solo endpoints de servicios de push conocidos |
 | Llenar el almacenamiento | Máximo 1000 suscripciones y 10 avisos por suscripción; validación de cada campo |
 | Inyectar HTML en la página | Todo texto que viene de fuera pasa por `esc()` |
@@ -953,10 +955,10 @@ flowchart TB
 
 | Mensaje que ves | Dónde nace | Causa | Qué hacer |
 |---|---|---|---|
-| *No se pudo conectar con el Consorcio (parada X).* | `index.html` | Ninguna dirección del worker respondió en 10 s | Probar con datos móviles; ver [DOMINIO.md](DOMINIO.md) |
+| *No se pudo conectar con el Consorcio (parada X).* | `index.html` | Ningún camino al worker respondió a tiempo (15 s para los minutos de una parada del Consorcio) | Probar con datos móviles; ver [DOMINIO.md](DOMINIO.md) |
 | *No se pudo conectar con EMT (parada X).* | `index.html` | Igual, para EMT | Igual |
 | *No se pudo consultar el Consorcio* (502) | `worker.js` | El Consorcio falló dos veces y no había datos guardados | Esperar; es temporal |
-| *El Consorcio no responde ahora mismo* (502) | `worker.js` | Igual, en las rutas `Get*.php` | Esperar |
+| *El Consorcio no responde ahora mismo* (502) | `worker.js` | Igual, en las rutas `/crtm/GetX` | Esperar |
 | *Sin datos nuevos · son de hace N min* | `index.html` | Se muestran los últimos datos buenos | Nada |
 | *EMT no está disponible ahora mismo (parada X).* | `logic.js` | El worker respondió `code: ERR` | Abrir `/emt/arrives/X` y leer `description` |
 | *EMT rechazó el inicio de sesión (aplicación: código 84; …)* | `worker.js` | Aplicación no habilitada y sin cuenta de respaldo | Añadir `EMT_EMAIL` y `EMT_PASSWORD` ([MANTENIMIENTO §1.4](MANTENIMIENTO.md)) |

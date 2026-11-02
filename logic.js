@@ -22,6 +22,7 @@
  *   7. Cuándo salir .......... groupByLine, leaveInfo, bestLeave
  *   8. Avisos programados .... alertActive, leaveMessage
  *   9. Compartir por enlace .. shareParam, parseShareParam
+ *  10. Nombres legibles ...... prettyName
  *
  * VOCABULARIO
  *   eta    Segundos que faltan para que el bus llegue a la parada.
@@ -413,4 +414,31 @@ export function parseShareParam(param) {
     if (net === "crtm" && CRTM_CODE.test(code) && !out.crtm.includes(code)) out.crtm.push(code);
   }
   return out;
+}
+
+// =====================================================================================================
+// 10. Nombres legibles
+// =====================================================================================================
+// El Consorcio y EMT dan muchos destinos EN MAYÚSCULAS, que se leen peor y ocupan más.
+
+const SMALL_WORDS = new Set(["de", "del", "la", "las", "los", "el", "y", "a", "al", "en", "por", "con"]);
+const ACRONYMS = new Set(["EMT", "UAM", "UNED", "RENFE", "IES", "CEIP", "CC", "II", "III", "IV", "M", "A", "N", "C", "H", "R", "S"]);
+
+/**
+ * Pasa a "tipo título" las palabras escritas enteras en mayúsculas, sin tocar las que ya vienen bien
+ * escritas, las siglas conocidas ni los números. Las palabras cortas (de, la, los…) van en minúscula
+ * salvo al principio.
+ * @param {string} text
+ * @returns {string}
+ * @example prettyName("SAN SEBASTIÁN DE LOS REYES (Pza. Univ. Popular)") // "San Sebastián de los Reyes (Pza. Univ. Popular)"
+ * @example prettyName("Plaza de Castilla") // "Plaza de Castilla" (no cambia)
+ */
+export function prettyName(text) {
+  let first = true;
+  return String(text ?? "").replace(/[A-Za-zÁÉÍÓÚÜÑáéíóúüñ]+/g, w => {
+    const isFirst = first; first = false;
+    if (w !== w.toUpperCase() || w.length < 2 && !isFirst || ACRONYMS.has(w)) return w;
+    const low = w.toLowerCase();
+    return !isFirst && SMALL_WORDS.has(low) ? low : low[0].toUpperCase() + low.slice(1);
+  });
 }

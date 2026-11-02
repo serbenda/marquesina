@@ -53,7 +53,7 @@ Cómo se **mantiene marquesina funcionando**: qué piezas tiene, de qué depende
 | Worker | Cloudflare Workers | https://api.bendi.dev · https://marquesina.serbenda.workers.dev | `worker.js`, `logic.js`, `push.js`, `wrangler.toml` | `worker.yml` al fusionar cambios del worker en `main` | Free |
 | Avisos (estado) | Cloudflare Durable Objects | (interno) `PushHub` / `hub` | `worker.js` | Con el worker | Free (SQLite) |
 | Cron de avisos | Cloudflare Cron Triggers | cada minuto | `wrangler.toml` | Con el worker | Free |
-| Repetidor | Deno Deploy | https://marquesina.serbenda.deno.net | `relay/` | Deno publica solo cada cambio de `main` | Gratis |
+| Repetidor | Deno Deploy | https://marquesina.serbenda.deno.net | `relay/` | Deno publica solo cada cambio de `main` (y versiones de prueba de otras ramas) | Gratis |
 | DNS | Cloudflare | zona `bendi.dev` | — (panel) | A mano | Free |
 | Dominio | Porkbun | `bendi.dev` | — | Renovación anual | De pago |
 | CI y vigilancia | GitHub Actions | pestaña *Actions* | `.github/workflows/` | Con el repo | Gratis (repo público) |
@@ -157,7 +157,7 @@ flowchart LR
 | Paso | Qué abre | Qué espera |
 |---|---|---|
 | Web publicada | `https://bendi.dev/marquesina/` | `<title>Marquesina</title>` |
-| Consorcio a través del worker | `api.bendi.dev/crtm/GetStopsTimes.php?codStop=8_06756…` | `"stopTimes"` |
+| Consorcio a través del worker | `api.bendi.dev/crtm/GetStopsTimes?codStop=8_06756…` | `"stopTimes"` |
 | EMT a través del worker | `api.bendi.dev/emt/arrives/69` | `"code":"00"` |
 | Avisos | `api.bendi.dev/push/key` | `"publicKey"` |
 | Dirección alternativa | `marquesina.serbenda.workers.dev/push/key` | `"publicKey"` |
@@ -180,7 +180,8 @@ Cada paso **mide su tiempo** y falla si supera su máximo (web 10 s, Consorcio 1
 ```mermaid
 flowchart LR
   DEV["development"] --> PR["Pull Request"]
-  PR --> T{"Tests<br/>sintaxis + 38 tests"}
+  PR --> T{"Tests<br/>sintaxis + npm test"}
+  PR --> E2E["Prueba en navegador<br/>(informativa)"]
   T -- "❌" --> DEV
   T -- "✅" --> REV["Revisión del dueño"]
   REV --> MRG["Merge a main"]
@@ -192,7 +193,8 @@ flowchart LR
 
 | Puerta (*gate*) | Qué impide |
 |---|---|
-| Rama protegida por norma (`main` solo por PR) | Cambios sin revisar |
+| Rama `main` protegida en GitHub: PR obligatoria y check `test` en verde; sin borrado ni *force push* (el administrador puede saltársela en una emergencia) | Cambios sin revisar o con los tests en rojo |
+| Prueba en navegador en cada PR (informativa, no bloquea) | Fallos que solo se ven en un navegador real con los servicios reales |
 | Tests en cada PR | Romper la lógica o la sintaxis |
 | Comprobación tras desplegar el worker | Dar por bueno un despliegue que no responde |
 | Dependabot (mensual, a `development`) | Acciones de GitHub desactualizadas o con fallos de seguridad |
@@ -351,8 +353,6 @@ Formato sin culpables (*blameless*): qué pasó, por qué y qué se cambió para
 - **Tiempo hasta arreglar:** ~40 min desde el diagnóstico.
 - **Prevención:** chequeo del repetidor; runbook R5; ver mejoras en §12.
 
----
-
 ### INC-6 · Con el repetidor, la búsqueda de paradas no traía casi nada (1 nov, 20:22)
 - **Impacto:** durante el bloqueo, *Zona*, *Buscar paradas* y *Cerca de mí* solo mostraban paradas de EMT; en Alcobendas y Sanse, ninguna. Los tiempos de las paradas guardadas sí funcionaban.
 - **Detección:** aviso del usuario (*"pulso Alcobendas o Sanse y saca casi nada"*).
@@ -400,7 +400,7 @@ Las búsquedas repetidas en la misma zona tardan milisegundos (caché de 1 día)
 | Mejora | Qué resuelve | Esfuerzo |
 |---|---|---|
 | Chequeo desde España (por ejemplo, un runner propio o un servicio de monitorización con nodos en España) | Detectar bloqueos reales de operadoras españolas (hoy se simulan) | Medio |
-| Que Deno Deploy publique solo `main` | No agotar las 15 publicaciones por hora del plan sin verificar (la publicación de prueba de cada cambio de `development` sale en rojo, sin efecto en la web) | Bajo (panel de Deno) |
+| Que Deno Deploy no haga versiones de prueba de otras ramas (producción ya sale solo de `main`) | No agotar las 15 publicaciones por hora del plan sin verificar: cada push a `development` crea una versión de prueba y, si se pasa del límite, sale en rojo en la PR, sin efecto en la web | Bajo (panel de Deno) |
 | Copia del worker completa fuera de Cloudflare | Quitar el último SPOF | Alto |
 | Exportar periódicamente las suscripciones | Poder recuperar los avisos | Medio |
 | Verificar la organización de Deno Deploy | Límites ×100 si crece el uso | Bajo |

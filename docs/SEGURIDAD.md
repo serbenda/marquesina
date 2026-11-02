@@ -119,7 +119,7 @@ flowchart LR
 | Componente | Amenaza | Tipo | Probabilidad | Impacto | Control actual | Riesgo |
 |---|---|---|---|---|---|---|
 | Worker | Robar las claves de EMT | I | Baja | Alto | Secretos de Cloudflare; nunca se devuelven en respuestas ni errores | 🟢 Bajo |
-| Worker | Usarlo como proxy abierto hacia cualquier web | T/E | Media | Medio | Rutas fijas; en `/crtm/` solo `Get*.php`; destinos fijos | 🟢 Bajo |
+| Worker | Usarlo como proxy abierto hacia cualquier web | T/E | Media | Medio | Rutas fijas; en `/crtm/` solo `Get` + letras, con o sin `.php`; destinos fijos | 🟢 Bajo |
 | Worker | Que otra web lo use desde el navegador | S | Media | Bajo | CORS solo para `bendi.dev` y `serbenda.github.io` | 🟢 Bajo |
 | Worker | Agotar el límite gratuito con peticiones masivas | D | Media | Medio | Caché de 10 s; Cloudflare filtra ataques grandes | 🟡 Medio (no hay límite por IP) |
 | Worker / avisos | Llenar el almacenamiento con suscripciones falsas | D | Baja | Medio | Máximo 1000 suscripciones y 10 avisos; validación de cada campo | 🟢 Bajo |
@@ -131,7 +131,7 @@ flowchart LR
 | Web | Leaflet manipulado en el CDN | T | Muy baja | Alto | **SRI** en el CSS y el JS de Leaflet | 🟢 Bajo |
 | Web | Fuentes de Google manipuladas | T | Muy baja | Bajo | Solo CSS y fuentes, no código | 🟢 Bajo |
 | Despliegue | Robo del token de Cloudflare | E | Baja | **Crítico** | Secreto de GitHub, solo usado en `worker.yml` | 🟡 Medio (token con *All zones*) |
-| Repo | Cambio malicioso en `main` | T | Baja | **Crítico** | Norma de PR; solo el dueño fusiona | 🟡 Medio (sin protección de rama configurada) |
+| Repo | Cambio malicioso en `main` | T | Baja | **Crítico** | `main` protegida: PR obligatoria y check `test` en verde; 2FA en GitHub | 🟢 Bajo (el administrador puede saltarse la regla en una emergencia; no se exigen aprobaciones porque hay un solo revisor) |
 | DNS | Secuestro de `bendi.dev` | S | Baja | **Crítico** | Cuentas de Cloudflare y Porkbun del dueño | 🟡 Medio (revisar 2FA, §7) |
 | Avisos | Notificación falsa | S | Muy baja | Bajo | Solo el worker tiene la clave privada VAPID | 🟢 Bajo |
 | Todo | No saber quién cambió algo | R | Baja | Bajo | Historial de Git, PR y registros de Actions | 🟢 Bajo |
@@ -173,7 +173,7 @@ flowchart TB
 | Control | Dónde | Qué evita |
 |---|---|---|
 | `corsHeaders()` | `worker.js`, `relay/relay.js` | Que otras webs lean las respuestas |
-| Expresiones regulares de ruta | `worker.js` (`/crtm/stop/…`, `Get[A-Za-z]+\.php`, `/emt/arrives/\d{1,6}`, …) | Proxy abierto, inyección en rutas |
+| Expresiones regulares de ruta | `worker.js` (`/crtm/stop/…`, `^(Get[A-Za-z]+)(\.php)?$`, `/emt/arrives/\d{1,6}`, …) | Proxy abierto, inyección en rutas |
 | `ROUTE`, `MAX_BODY`, `TIMEOUT_MS` | `relay/relay.js` | Proxy abierto, cuerpos enormes, peticiones colgadas |
 | `cleanAlerts()` | `worker.js` | Datos basura o maliciosos en el almacenamiento |
 | `MAX_SUBSCRIPTIONS`, `MAX_ALERTS` | `worker.js` | Llenar el Durable Object |
@@ -183,6 +183,7 @@ flowchart TB
 | `parseShareParam()` | `logic.js` | Enlaces compartidos con datos maliciosos |
 | `integrity=` (SRI) | `index.html` | Leaflet manipulado |
 | `keep_vars = true` | `wrangler.toml` | Que un despliegue borre los secretos |
+| Protección de `main` | GitHub → Settings → Branches | Cambios sin PR o con los tests en rojo; borrar o reescribir `main` |
 | Mensajes de error sin credenciales | `emtLogin()` | Filtrar claves en errores |
 
 ---
@@ -215,7 +216,7 @@ flowchart LR
 
 | Cuenta | Qué controla | Riesgo si se pierde | Recomendación |
 |---|---|---|---|
-| GitHub `serbenda` | Código, despliegues, secreto de Cloudflare | Crítico | Comprobar que el 2FA está activado; revisar sesiones y apps autorizadas |
+| GitHub `serbenda` | Código, despliegues, secreto de Cloudflare | Crítico | ✅ 2FA activado (confirmado el 1 nov con GitHub Mobile); revisar de vez en cuando sesiones y apps autorizadas |
 | Cloudflare | Worker, avisos, DNS de `bendi.dev` | Crítico | Comprobar que el 2FA está activado |
 | Porkbun | Propiedad del dominio | Crítico | **Activar 2FA** (Porkbun lo sugiere en el panel); renovación automática |
 | Mobility Labs | Acceso a datos de EMT | Medio | Contraseña única |
@@ -257,7 +258,7 @@ flowchart LR
 
 | # | Riesgo | Recomendación | Esfuerzo | Prioridad |
 |---|---|---|---|---|
-| 1 | Cualquiera puede cambiar `main` si consigue la cuenta de GitHub, y no hay protección técnica de rama | Activar *branch protection* en `main`: PR obligatoria y *Tests* en verde | Bajo | Alta |
+| 1 | ✅ **Hecho (1 nov):** `main` protegida (PR obligatoria, check `test` requerido, sin borrado ni *force push*). Queda que el administrador puede saltarse la regla | Mantener; no usar el salto salvo emergencia | — | — |
 | 2 | Porkbun sin 2FA (lo sugiere su propio panel) | Activar 2FA | Bajo | Alta |
 | 3 | Token de Cloudflare con *All zones* | Limitarlo a la zona `bendi.dev` | Bajo | Media |
 | 4 | Sin límite de peticiones por IP | *Rate limiting* de Cloudflare o un contador en el worker | Medio | Media |
