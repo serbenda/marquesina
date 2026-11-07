@@ -250,7 +250,8 @@ flowchart LR
 | Avisos activados | Sí | Durable Object | Hasta que se desactiven o caduque la suscripción |
 | Dirección de entrega de notificaciones | Sí | Durable Object (clave = hash) | Igual |
 | IP, navegador | Registros técnicos de Cloudflare, GitHub y Deno | Sus sistemas | Según cada proveedor |
-| Cuentas, cookies, analítica | **No** | — | — |
+| Visitas a la página | Un recuento anónimo por página: ruta, de qué web llega, país, tamaño de pantalla y navegador | [GoatCounter](https://www.goatcounter.com/), sin cookies ni datos personales | Mientras exista la cuenta |
+| Cuentas, cookies | **No** | — | — |
 
 ---
 

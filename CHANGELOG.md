@@ -4,6 +4,7 @@ Lo más reciente, arriba. Cada entrada dice qué cambia para quien usa la web y 
 
 ## Sin publicar
 
+- **Contador de visitas anónimo** con GoatCounter, sin cookies ni datos personales, para saber cuánta gente usa la web.
 - **Interfaz más cómoda en el móvil:** la lista ocupa más que el mapa; las acciones caben en una fila y *Ajustes* pasa a un icono ⚙; botones de al menos 40 px; destinos legibles (*San Sebastián de los Reyes* en vez de *SAN SEBASTIÁN DE LOS REYES*) en dos líneas en vez de cortados; *luego 14 y 26 min*; pista para poner los minutos andando; el mapa se centra en tu parada en cuanto llega.
 - **Arreglado:** tocar *Editar* a veces no hacía nada (la lista se redibujaba cada segundo debajo del dedo).
 - **Seguridad:** el nombre de la parada se escapa también en la ventanita del mapa.
