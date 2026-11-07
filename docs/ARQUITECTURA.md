@@ -301,7 +301,7 @@ Configuración necesaria en el repo: **Settings → Pages → Source: GitHub Act
 - Las claves de la aplicación de EMT viven solo como secretos del worker. **Nunca deben aparecer en `index.html` ni en el repo.**
 - Todas las consultas de EMT se hacen con la aplicación `marquesina`; los usuarios no ponen ninguna cuenta. Si hubiera abuso, se pueden regenerar las claves en Mobility Labs y actualizar los secretos.
 - El worker solo reenvía las consultas de paradas y tiempos del Consorcio y responde a los orígenes permitidos.
-- La web no tiene analítica ni cookies propias.
+- La web no tiene cookies. Solo cuenta las visitas de forma anónima con GoatCounter (sin cookies ni datos personales), como el resto de webs de bendi.dev; el service worker no toca esas peticiones.
 - El repetidor no tiene secretos ni guarda datos; solo deja pasar `/crtm/`, `/emt/` y `/push/`, limita los cuerpos a 16 KB y aplica el mismo CORS que el worker.
 
 ## 9. Ideas pendientes
